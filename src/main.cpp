@@ -88,8 +88,17 @@ int main(int argc, char** argv) {
         std::cerr << pavic::formatDiagnostic(sourcePath, diagnostic) << "\n";
     }
 
-    if (diagnostics.hasErrors()) {
+    if (diagnostics.errorCount() > 0) {
+        if (!quiet) {
+            std::cout << "[driver] Lex failed with " << diagnostics.errorCount() << " error(s) and "
+                      << diagnostics.warningCount() << " warning(s); parser step is skipped.\n";
+        }
         return kExitFailure;
+    }
+
+    if (!quiet) {
+        std::cout << "[driver] Lex succeeded with " << diagnostics.warningCount()
+                  << " warning(s); ready for parser next milestone.\n";
     }
 
     return kExitSuccess;
