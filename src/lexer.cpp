@@ -1,6 +1,7 @@
 #include "lexer.hpp"
 
 #include <iostream>
+#include <string>
 
 namespace {
 
@@ -15,13 +16,42 @@ namespace pavic {
 Lexer::Lexer(const SourceMap& map, DiagnosticBag& diagnostics, bool verbose)
     : map_(map), diagnostics_(diagnostics), verbose_(verbose), text_(map.text()) {}
 
+void Lexer::traceStage(int stage, const std::string& message) const {
+    if (!verbose_) {
+        return;
+    }
+
+    std::cout << "[lex] stage " << stage << "/" << kNumLexTraceStages << ": " << message << "\n";
+}
+
+void Lexer::traceLexSummary(const std::vector<Token>& tokens) const {
+    if (!verbose_) {
+        return;
+    }
+
+    std::size_t errorCount = 0;
+    std::size_t warningCount = 0;
+    for (const auto& diagnostic : diagnostics_.all()) {
+        if (diagnostic.kind == DiagnosticKind::Error) {
+            ++errorCount;
+        } else {
+            ++warningCount;
+        }
+    }
+
+    std::cout << "[lex] stage " << kNumLexTraceStages << "/" << kNumLexTraceStages
+              << ": lex session complete — tokens=" << tokens.size()
+              << " (including EOF), diagnostics: " << errorCount << " error(s), " << warningCount
+              << " warning(s)\n";
+}
+
 void Lexer::traceToken(const Token& token) const {
     if (!verbose_) {
         return;
     }
 
     const SourceLocation location = map_.locationAt(token.offset);
-    std::cout << "[lex] " << location.line << ":" << location.column << ": " << tokenKindName(token.kind);
+    std::cout << "[lex] token: " << location.line << ":" << location.column << ": " << tokenKindName(token.kind);
     if (!token.lexeme.empty()) {
         std::cout << " `" << token.lexeme << "`";
     }
@@ -180,6 +210,15 @@ void Lexer::lexAll(std::vector<Token>& tokens) {
     tokens.clear();
     pos_ = 0;
 
+    traceStage(
+        1,
+        "begin lexing session — source bytes=" + std::to_string(map_.byteLength()) + ", lines=" +
+            std::to_string(map_.lineCount())
+    );
+    traceStage(2, "cursor initialized at byte offset 0");
+    traceStage(3, "entering main scan loop (whitespace, block comments, then tokens)");
+    traceStage(4, "recognizing tokens (each following line is one token)");
+
     while (pos_ < text_.size()) {
         skipWhitespace();
         if (pos_ >= text_.size()) {
@@ -282,13 +321,17 @@ void Lexer::lexAll(std::vector<Token>& tokens) {
         ++pos_;
     }
 
+    traceStage(5, "emitting EOF sentinel token");
     Token eofToken{TokenKind::EndOfFile, std::string_view{}, pos_};
     tokens.push_back(eofToken);
     traceToken(eofToken);
 
+    traceStage(6, "checking trailing end-of-program marker ($)");
     if (!diagnostics_.hasErrors()) {
         warnTrailingEop();
     }
+
+    traceLexSummary(tokens);
 }
 
 } // namespace pavic

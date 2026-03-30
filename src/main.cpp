@@ -15,6 +15,7 @@ constexpr int kExitFailure = 1;
 
 void printUsage(const char* executableName) {
     std::cerr << "Usage: " << executableName << " [-q|--quiet] <source-file>\n";
+    std::cerr << "  (verbose lexer trace is the default; use -q to disable)\n";
 }
 
 bool readFileToString(const std::string& filePath, std::string& contents) {
@@ -89,10 +90,6 @@ int main(int argc, char** argv) {
 
     if (diagnostics.hasErrors()) {
         return kExitFailure;
-    }
-
-    if (!quiet) {
-        std::cout << "Lexer finished (" << tokens.size() << " tokens including EOF).\n";
     }
 
     return kExitSuccess;
