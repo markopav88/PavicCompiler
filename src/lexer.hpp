@@ -4,6 +4,7 @@
 #include "source.hpp"
 #include "token.hpp"
 
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -11,6 +12,8 @@ namespace pavic {
 
 class Lexer {
 public:
+    static constexpr int kNumLexTraceStages = 7;
+
     Lexer(const SourceMap& map, DiagnosticBag& diagnostics, bool verbose);
 
     /// Tokenizes the entire source. On any lexer **error**, still completes best-effort scanning
@@ -32,6 +35,9 @@ private:
 
     void emitToken(std::vector<Token>& tokens, TokenKind kind, std::size_t start, std::size_t end);
     void traceToken(const Token& token) const;
+
+    void traceStage(int stage, const std::string& message) const;
+    void traceLexSummary(const std::vector<Token>& tokens) const;
 
     void warnTrailingEop();
 };
