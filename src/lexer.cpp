@@ -110,9 +110,9 @@ bool Lexer::trySkipBlockComment() {
     }
 
     diagnostics_.addError(
-        "unterminated block comment starting with `/*`",
+        "unterminated block comment starting with `/*` (fatal lexer error)",
         map_.locationAt(start),
-        "Close the comment with `*/` before the end of the file."
+        "Close the comment with `*/` before EOF. Lexing cannot reliably continue to parser readiness with an open comment."
     );
     return true;
 }

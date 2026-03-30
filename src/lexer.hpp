@@ -18,6 +18,9 @@ public:
 
     /// Tokenizes the entire source. On any lexer **error**, still completes best-effort scanning
     /// but callers must not run the parser (`diagnostics.hasErrors()`).
+    ///
+    /// Multi-program policy: every `$` closes the current program and the following token
+    /// (if any) starts the next program.
     void lexAll(std::vector<Token>& tokens);
 
 private:
