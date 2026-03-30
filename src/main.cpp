@@ -1,10 +1,12 @@
 #include "diagnostic.hpp"
+#include "lexer.hpp"
 #include "source.hpp"
 
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 namespace {
 
@@ -12,7 +14,7 @@ constexpr int kExitSuccess = 0;
 constexpr int kExitFailure = 1;
 
 void printUsage(const char* executableName) {
-    std::cerr << "Usage: " << executableName << " <source-file>\n";
+    std::cerr << "Usage: " << executableName << " [-q|--quiet] <source-file>\n";
 }
 
 bool readFileToString(const std::string& filePath, std::string& contents) {
@@ -27,30 +29,59 @@ bool readFileToString(const std::string& filePath, std::string& contents) {
     return true;
 }
 
+bool parseArguments(int argc, char** argv, bool& quiet, std::string& sourcePath) {
+    quiet = false;
+
+    if (argc == 2) {
+        sourcePath = argv[1];
+        return true;
+    }
+
+    if (argc == 3) {
+        const std::string flag(argv[1]);
+        if (flag == "-q" || flag == "--quiet") {
+            quiet = true;
+            sourcePath = argv[2];
+            return true;
+        }
+    }
+
+    return false;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
-    pavic::DiagnosticBag diagnostics;
+    bool quiet = false;
+    std::string sourcePath;
 
-    if (argc != 2) {
+    if (!parseArguments(argc, argv, quiet, sourcePath)) {
         printUsage(argv[0]);
-        diagnostics.addError(
-            "expected exactly one source file path argument",
-            {1, 1},
-            "Run the compiler as: pavicc <path-to-source-file>"
-        );
+        return kExitFailure;
     }
 
-    std::string sourcePath = argc >= 2 ? argv[1] : "<missing>";
+    pavic::DiagnosticBag diagnostics;
     std::string sourceText;
 
-    if (argc == 2 && !readFileToString(sourcePath, sourceText)) {
+    if (!readFileToString(sourcePath, sourceText)) {
         diagnostics.addError(
             "unable to open input file",
             {1, 1},
             "Check the file path and permissions, then try again."
         );
     }
+
+    if (diagnostics.hasErrors()) {
+        for (const auto& diagnostic : diagnostics.all()) {
+            std::cerr << pavic::formatDiagnostic(sourcePath, diagnostic) << "\n";
+        }
+        return kExitFailure;
+    }
+
+    const pavic::SourceMap sourceMap(sourceText);
+    std::vector<pavic::Token> tokens;
+    pavic::Lexer lexer(sourceMap, diagnostics, !quiet);
+    lexer.lexAll(tokens);
 
     for (const auto& diagnostic : diagnostics.all()) {
         std::cerr << pavic::formatDiagnostic(sourcePath, diagnostic) << "\n";
@@ -60,11 +91,9 @@ int main(int argc, char** argv) {
         return kExitFailure;
     }
 
-    const pavic::SourceMap sourceMap(sourceText);
-    const pavic::SourceLocation eofLocation = sourceMap.locationAt(sourceMap.byteLength());
+    if (!quiet) {
+        std::cout << "Lexer finished (" << tokens.size() << " tokens including EOF).\n";
+    }
 
-    std::cout << "Loaded source file successfully (" << sourceMap.byteLength() << " bytes, "
-              << sourceMap.lineCount() << " lines; EOF at " << eofLocation.line << ":"
-              << eofLocation.column << ").\n";
     return kExitSuccess;
 }
