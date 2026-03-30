@@ -1,4 +1,5 @@
 #include "diagnostic.hpp"
+#include "source.hpp"
 
 #include <fstream>
 #include <iostream>
@@ -59,6 +60,11 @@ int main(int argc, char** argv) {
         return kExitFailure;
     }
 
-    std::cout << "Loaded source file successfully (" << sourceText.size() << " bytes).\n";
+    const pavic::SourceMap sourceMap(sourceText);
+    const pavic::SourceLocation eofLocation = sourceMap.locationAt(sourceMap.byteLength());
+
+    std::cout << "Loaded source file successfully (" << sourceMap.byteLength() << " bytes, "
+              << sourceMap.lineCount() << " lines; EOF at " << eofLocation.line << ":"
+              << eofLocation.column << ").\n";
     return kExitSuccess;
 }
