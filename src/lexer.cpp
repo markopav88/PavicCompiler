@@ -45,6 +45,20 @@ void Lexer::traceLexSummary(const std::vector<Token>& tokens) const {
               << " warning(s)\n";
 }
 
+void Lexer::traceProgramBoundary(std::size_t endedProgramIndex, SourceLocation location) const {
+    if (!verbose_) {
+        return;
+    }
+
+    std::cout << "[lex] program " << endedProgramIndex << " ended at " << location.line << ":"
+              << location.column << " via `$`; continuing with program " << (endedProgramIndex + 1)
+              << "\n";
+}
+
+void Lexer::noteProgramContent() {
+    currentProgramHasContent_ = true;
+}
+
 void Lexer::traceToken(const Token& token) const {
     if (!verbose_) {
         return;
@@ -62,6 +76,15 @@ void Lexer::emitToken(std::vector<Token>& tokens, TokenKind kind, std::size_t st
     Token token{kind, text_.substr(start, end - start), start};
     tokens.push_back(token);
     traceToken(token);
+
+    if (kind == TokenKind::DollarEop) {
+        const SourceLocation location = map_.locationAt(start);
+        traceProgramBoundary(programCount_, location);
+        ++programCount_;
+        currentProgramHasContent_ = false;
+    } else if (kind != TokenKind::EndOfFile) {
+        noteProgramContent();
+    }
 }
 
 void Lexer::skipWhitespace() {
@@ -209,6 +232,8 @@ void Lexer::warnTrailingEop() {
 void Lexer::lexAll(std::vector<Token>& tokens) {
     tokens.clear();
     pos_ = 0;
+    programCount_ = 1;
+    currentProgramHasContent_ = false;
 
     traceStage(
         1,
@@ -218,6 +243,9 @@ void Lexer::lexAll(std::vector<Token>& tokens) {
     traceStage(2, "cursor initialized at byte offset 0");
     traceStage(3, "entering main scan loop (whitespace, block comments, then tokens)");
     traceStage(4, "recognizing tokens (each following line is one token)");
+    if (verbose_) {
+        std::cout << "[lex] program 1 started at 1:1\n";
+    }
 
     while (pos_ < text_.size()) {
         skipWhitespace();

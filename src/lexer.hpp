@@ -26,6 +26,8 @@ private:
     bool verbose_;
     std::string_view text_;
     std::size_t pos_ = 0;
+    std::size_t programCount_ = 1;
+    bool currentProgramHasContent_ = false;
 
     void skipWhitespace();
     bool trySkipBlockComment();
@@ -38,6 +40,8 @@ private:
 
     void traceStage(int stage, const std::string& message) const;
     void traceLexSummary(const std::vector<Token>& tokens) const;
+    void noteProgramContent();
+    void traceProgramBoundary(std::size_t endedProgramIndex, SourceLocation location) const;
 
     void warnTrailingEop();
 };
