@@ -8,6 +8,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 add_executable(pavicc
     src/main.cpp
     src/diagnostic.cpp
+    src/source.cpp
 )
 
 target_include_directories(pavicc PRIVATE src)
