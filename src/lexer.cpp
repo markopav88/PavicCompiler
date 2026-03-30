@@ -211,20 +211,11 @@ void Lexer::lexWord(std::vector<Token>& tokens) {
 }
 
 void Lexer::warnTrailingEop() {
-    std::size_t end = text_.size();
-    while (end > 0 && isSpace(text_[end - 1])) {
-        --end;
-    }
-
-    if (end == 0) {
-        return;
-    }
-
-    if (text_[end - 1] != '$') {
+    if (currentProgramHasContent_) {
         diagnostics_.addWarning(
             "input does not end with `$` (end-of-program marker)",
-            map_.locationAt(end),
-            "The grammar requires each program to end with `$`. Append `$` after the final `}` block."
+            map_.locationAt(pos_),
+            "The grammar requires each program to end with `$`. Append `$` after the final program before EOF."
         );
     }
 }
