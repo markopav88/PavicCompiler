@@ -9,6 +9,8 @@ add_executable(pavicc
     src/main.cpp
     src/diagnostic.cpp
     src/source.cpp
+    src/token.cpp
+    src/lexer.cpp
 )
 
 target_include_directories(pavicc PRIVATE src)
