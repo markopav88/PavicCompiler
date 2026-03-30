@@ -29,6 +29,8 @@ public:
     void addWarning(std::string message, SourceLocation location, std::string hint = "");
 
     bool hasErrors() const;
+    std::size_t errorCount() const;
+    std::size_t warningCount() const;
     bool empty() const;
     const std::vector<Diagnostic>& all() const;
 

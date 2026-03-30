@@ -21,6 +21,26 @@ bool DiagnosticBag::hasErrors() const {
     return false;
 }
 
+std::size_t DiagnosticBag::errorCount() const {
+    std::size_t count = 0;
+    for (const auto& diagnostic : diagnostics_) {
+        if (diagnostic.kind == DiagnosticKind::Error) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+std::size_t DiagnosticBag::warningCount() const {
+    std::size_t count = 0;
+    for (const auto& diagnostic : diagnostics_) {
+        if (diagnostic.kind == DiagnosticKind::Warning) {
+            ++count;
+        }
+    }
+    return count;
+}
+
 bool DiagnosticBag::empty() const {
     return diagnostics_.empty();
 }
