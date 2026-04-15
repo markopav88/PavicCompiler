@@ -3,6 +3,14 @@ Markos Compiler built in C++ 17
 
 ## Build
 
+**Makefile (uses `g++ -std=c++17`, as required):**
+
+```bash
+make
+```
+
+**CMake (optional):**
+
 ```bash
 cmake -S . -B build
 cmake --build build
@@ -11,8 +19,15 @@ cmake --build build
 ## Run
 
 ```bash
+./pavicc <source-file>              # after `make`
+./pavicc -q <source-file>           # quiet mode (no verbose lexer trace)
+```
+
+Or, if built with CMake:
+
+```bash
 ./build/pavicc <source-file>
-./build/pavicc -q <source-file>   # quiet mode (no verbose lexer trace)
+./build/pavicc -q <source-file>
 ```
 
 Verbose lexer trace is enabled by default.
