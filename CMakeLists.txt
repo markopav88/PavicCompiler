@@ -12,6 +12,7 @@ add_executable(pavicc
     src/token.cpp
     src/lexer.cpp
     src/cst.cpp
+    src/parser.cpp
 )
 
 target_include_directories(pavicc PRIVATE src)

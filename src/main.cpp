@@ -1,5 +1,6 @@
 #include "diagnostic.hpp"
 #include "lexer.hpp"
+#include "parser.hpp"
 #include "source.hpp"
 
 #include <fstream>
@@ -96,9 +97,19 @@ int main(int argc, char** argv) {
         return kExitFailure;
     }
 
+    pavic::Parser parser(sourceMap, diagnostics, tokens, !quiet);
+    parser.trace("parser driver initialized (token cursor at start of stream)");
+
+    if (diagnostics.errorCount() > 0) {
+        for (const auto& diagnostic : diagnostics.all()) {
+            std::cerr << pavic::formatDiagnostic(sourcePath, diagnostic) << "\n";
+        }
+        return kExitFailure;
+    }
+
     if (!quiet) {
         std::cout << "[driver] Lex succeeded with " << diagnostics.warningCount()
-                  << " warning(s); ready for parser next milestone.\n";
+                  << " warning(s); parser driver ready for CST parse (Step 3+).\n";
     }
 
     return kExitSuccess;
