@@ -1,16 +1,18 @@
 #pragma once
 
+#include "cst.hpp"
 #include "diagnostic.hpp"
 #include "source.hpp"
 #include "token.hpp"
 
 #include <cstddef>
+#include <memory>
 #include <string>
 #include <vector>
 
 namespace pavic {
 
-/// Token-stream cursor + diagnostics for recursive descent (Step 2: driver only).
+/// Token-stream cursor + recursive descent parser + CST construction.
 class Parser {
 public:
     Parser(const SourceMap& map, DiagnosticBag& diagnostics, const std::vector<Token>& tokens, bool verbose);
@@ -40,12 +42,36 @@ public:
 
     void trace(const std::string& message) const;
 
+    /// One `Program ::= Block '$'` then stops (caller may repeat for multi-program files).
+    std::unique_ptr<CstProgram> parseProgram();
+
+    /// All programs in the token stream: `( Block '$' )*`, stopping at `EndOfFile`.
+    std::vector<std::unique_ptr<CstProgram>> parseTranslationUnit();
+
 private:
     const SourceMap& map_;
     DiagnosticBag& diagnostics_;
     const std::vector<Token>& tokens_;
     bool verbose_;
     std::size_t index_ = 0;
+
+    bool statementStartsHere() const;
+    static bool isTypeKeyword(TokenKind kind);
+    static std::string typeKeywordLexeme(TokenKind kind);
+
+    std::unique_ptr<CstBlock> parseBlock();
+    std::unique_ptr<CstStatementList> parseStatementList();
+    std::unique_ptr<CstStatement> parseStatement();
+
+    std::unique_ptr<CstPrintStatement> parsePrintStatement();
+    std::unique_ptr<CstAssignStatement> parseAssignStatement();
+    std::unique_ptr<CstVarDeclStatement> parseVarDeclStatement();
+    std::unique_ptr<CstWhileStatement> parseWhileStatement();
+    std::unique_ptr<CstIfStatement> parseIfStatement();
+
+    std::unique_ptr<CstExpr> parseExpr();
+    std::unique_ptr<CstBooleanExpr> parseBooleanExpr();
+    std::unique_ptr<CstBinaryBoolExpr> parseBooleanParenExpr();
 };
 
 } // namespace pavic
