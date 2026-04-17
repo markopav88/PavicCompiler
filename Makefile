@@ -8,7 +8,8 @@ SOURCES := \
 	src/diagnostic.cpp \
 	src/source.cpp \
 	src/token.cpp \
-	src/lexer.cpp
+	src/lexer.cpp \
+	src/cst.cpp
 
 TARGET := pavicc
 
