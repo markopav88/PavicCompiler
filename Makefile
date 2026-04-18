@@ -14,7 +14,8 @@ SOURCES := \
 	src/ast.cpp \
 	src/ast_lower.cpp \
 	src/symbol_table.cpp \
-	src/semantic_scope.cpp
+	src/semantic_scope.cpp \
+	src/semantic_type.cpp
 
 TARGET := pavicc
 

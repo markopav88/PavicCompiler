@@ -2,6 +2,7 @@
 #include "ast_lower.hpp"
 #include "diagnostic.hpp"
 #include "semantic_scope.hpp"
+#include "semantic_type.hpp"
 #include "symbol_table.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
@@ -157,12 +158,25 @@ int main(int argc, char** argv) {
     const std::size_t errorsBeforeSemantic = diagnostics.errorCount();
     std::vector<std::vector<pavic::SymbolRecord>> symbolTables;
     symbolTables.reserve(astPrograms.size());
+    std::vector<bool> scopeOkPerProgram;
+    scopeOkPerProgram.reserve(astPrograms.size());
+
     for (std::size_t i = 0; i < astPrograms.size(); ++i) {
         std::vector<pavic::SymbolRecord> table;
+        const std::size_t before = diagnostics.errorCount();
         if (astPrograms[i]) {
             pavic::runScopeCheck(*astPrograms[i], sourceMap, tokens, diagnostics, !quiet, table);
         }
         symbolTables.push_back(std::move(table));
+        scopeOkPerProgram.push_back(astPrograms[i] && diagnostics.errorCount() == before);
+    }
+
+    const std::size_t errorsAfterScope = diagnostics.errorCount();
+
+    for (std::size_t i = 0; i < astPrograms.size(); ++i) {
+        if (scopeOkPerProgram[i] && astPrograms[i]) {
+            pavic::runTypeCheck(*astPrograms[i], sourceMap, tokens, diagnostics, !quiet);
+        }
     }
 
     for (const auto& diagnostic : diagnostics.all()) {
@@ -171,8 +185,11 @@ int main(int argc, char** argv) {
 
     if (diagnostics.errorCount() > errorsBeforeSemantic) {
         if (!quiet) {
-            std::cout << "[driver] Semantic (scope) check failed: " << (diagnostics.errorCount() - errorsBeforeSemantic)
-                      << " error(s). Symbol table was not printed.\n";
+            const std::size_t scopeErrs = errorsAfterScope - errorsBeforeSemantic;
+            const std::size_t typeErrs = diagnostics.errorCount() - errorsAfterScope;
+            std::cout << "[driver] Semantic check failed: " << (diagnostics.errorCount() - errorsBeforeSemantic)
+                      << " error(s) (scope: " << scopeErrs << ", type: " << typeErrs
+                      << "). Symbol table was not printed.\n";
         }
         return kExitFailure;
     }
@@ -187,7 +204,7 @@ int main(int argc, char** argv) {
         }
         std::cout << "========== end symbol table ==========\n";
 
-        std::cout << "[driver] Parse and scope check succeeded (" << programs.size() << " program(s)); warnings: "
+        std::cout << "[driver] Parse, scope, and type check succeeded (" << programs.size() << " program(s)); warnings: "
                   << diagnostics.warningCount() << ", hints: " << diagnostics.hintCount()
                   << ". (Only errors block later phases; warnings and hints are informational.)\n";
     }
