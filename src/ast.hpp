@@ -109,6 +109,8 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    const AstExpr* expr() const { return expr_.get(); }
+
 private:
     std::unique_ptr<AstExpr> expr_;
 };
@@ -118,6 +120,9 @@ public:
     AstAssignStatement(char name, std::unique_ptr<AstExpr> expr, AstSpan span);
 
     void print(std::ostream& os, int depth) const override;
+
+    char name() const { return name_; }
+    const AstExpr* expr() const { return expr_.get(); }
 
 private:
     char name_;
@@ -130,6 +135,9 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    const std::string& typeName() const { return typeName_; }
+    char name() const { return name_; }
+
 private:
     std::string typeName_;
     char name_;
@@ -140,6 +148,9 @@ public:
     AstWhileStatement(std::unique_ptr<AstBooleanExpr> condition, std::unique_ptr<AstBlock> body, AstSpan span);
 
     void print(std::ostream& os, int depth) const override;
+
+    const AstBooleanExpr* condition() const { return condition_.get(); }
+    const AstBlock* body() const { return body_.get(); }
 
 private:
     std::unique_ptr<AstBooleanExpr> condition_;
@@ -152,6 +163,9 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    const AstBooleanExpr* condition() const { return condition_.get(); }
+    const AstBlock* body() const { return body_.get(); }
+
 private:
     std::unique_ptr<AstBooleanExpr> condition_;
     std::unique_ptr<AstBlock> body_;
@@ -162,6 +176,8 @@ public:
     explicit AstBlockStatement(std::unique_ptr<AstBlock> block, AstSpan span);
 
     void print(std::ostream& os, int depth) const override;
+
+    const AstBlock* block() const { return block_.get(); }
 
 private:
     std::unique_ptr<AstBlock> block_;
@@ -178,6 +194,8 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    const std::string& lexeme() const { return lexeme_; }
+
 private:
     std::string lexeme_;
 };
@@ -187,6 +205,8 @@ public:
     explicit AstLiteralString(std::string lexeme, AstSpan span);
 
     void print(std::ostream& os, int depth) const override;
+
+    const std::string& lexeme() const { return lexeme_; }
 
 private:
     std::string lexeme_;
@@ -198,6 +218,8 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    bool value() const { return value_; }
+
 private:
     bool value_;
 };
@@ -208,6 +230,8 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    char name() const { return name_; }
+
 private:
     char name_;
 };
@@ -217,6 +241,9 @@ public:
     AstAddExpr(std::unique_ptr<AstExpr> left, std::unique_ptr<AstExpr> right, AstSpan span);
 
     void print(std::ostream& os, int depth) const override;
+
+    const AstExpr* left() const { return left_.get(); }
+    const AstExpr* right() const { return right_.get(); }
 
 private:
     std::unique_ptr<AstExpr> left_;
@@ -236,6 +263,9 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    const AstExpr* left() const { return left_.get(); }
+    const AstExpr* right() const { return right_.get(); }
+
 private:
     Op op_;
     std::unique_ptr<AstExpr> left_;
@@ -248,6 +278,8 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    bool value() const { return value_; }
+
 private:
     bool value_;
 };
@@ -258,6 +290,8 @@ public:
     explicit AstBooleanExprWrapper(std::unique_ptr<AstBooleanExpr> inner, AstSpan span);
 
     void print(std::ostream& os, int depth) const override;
+
+    const AstBooleanExpr* inner() const { return inner_.get(); }
 
 private:
     std::unique_ptr<AstBooleanExpr> inner_;
