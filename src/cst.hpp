@@ -121,6 +121,8 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    const CstExpr* expr() const { return expr_.get(); }
+
 private:
     std::unique_ptr<CstExpr> expr_;
 };
@@ -130,6 +132,9 @@ public:
     CstAssignStatement(char name, std::unique_ptr<class CstExpr> expr, CstSpan span);
 
     void print(std::ostream& os, int depth) const override;
+
+    char name() const { return name_; }
+    const CstExpr* expr() const { return expr_.get(); }
 
 private:
     char name_;
@@ -142,6 +147,9 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    const std::string& typeName() const { return typeName_; }
+    char name() const { return name_; }
+
 private:
     std::string typeName_;
     char name_;
@@ -152,6 +160,9 @@ public:
     CstWhileStatement(std::unique_ptr<class CstBooleanExpr> condition, std::unique_ptr<CstBlock> body, CstSpan span);
 
     void print(std::ostream& os, int depth) const override;
+
+    const CstBooleanExpr* condition() const { return condition_.get(); }
+    const CstBlock* body() const { return body_.get(); }
 
 private:
     std::unique_ptr<CstBooleanExpr> condition_;
@@ -164,6 +175,9 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    const CstBooleanExpr* condition() const { return condition_.get(); }
+    const CstBlock* body() const { return body_.get(); }
+
 private:
     std::unique_ptr<CstBooleanExpr> condition_;
     std::unique_ptr<CstBlock> body_;
@@ -175,6 +189,8 @@ public:
     explicit CstBlockStatement(std::unique_ptr<CstBlock> block, CstSpan span);
 
     void print(std::ostream& os, int depth) const override;
+
+    const CstBlock* block() const { return block_.get(); }
 
 private:
     std::unique_ptr<CstBlock> block_;
@@ -194,6 +210,8 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    const std::string& lexeme() const { return lexeme_; }
+
 private:
     std::string lexeme_;
 };
@@ -203,6 +221,8 @@ public:
     explicit CstLiteralString(std::string lexeme, CstSpan span);
 
     void print(std::ostream& os, int depth) const override;
+
+    const std::string& lexeme() const { return lexeme_; }
 
 private:
     std::string lexeme_;
@@ -214,6 +234,8 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    bool value() const { return value_; }
+
 private:
     bool value_;
 };
@@ -223,6 +245,8 @@ public:
     explicit CstIdentifierExpr(char name, CstSpan span);
 
     void print(std::ostream& os, int depth) const override;
+
+    char name() const { return name_; }
 
 private:
     char name_;
@@ -234,6 +258,9 @@ public:
     CstAddExpr(std::unique_ptr<CstExpr> left, std::unique_ptr<CstExpr> right, CstSpan span);
 
     void print(std::ostream& os, int depth) const override;
+
+    const CstExpr* left() const { return left_.get(); }
+    const CstExpr* right() const { return right_.get(); }
 
 private:
     std::unique_ptr<CstExpr> left_;
@@ -256,6 +283,10 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    Op op() const { return op_; }
+    const CstExpr* left() const { return left_.get(); }
+    const CstExpr* right() const { return right_.get(); }
+
 private:
     Op op_;
     std::unique_ptr<CstExpr> left_;
@@ -268,6 +299,8 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    bool value() const { return value_; }
+
 private:
     bool value_;
 };
@@ -278,6 +311,8 @@ public:
     explicit CstBooleanExprWrapper(std::unique_ptr<CstBooleanExpr> inner, CstSpan span);
 
     void print(std::ostream& os, int depth) const override;
+
+    const CstBooleanExpr* inner() const { return inner_.get(); }
 
 private:
     std::unique_ptr<CstBooleanExpr> inner_;
