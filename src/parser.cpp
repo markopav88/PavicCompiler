@@ -6,6 +6,29 @@
 
 namespace pavic {
 
+namespace {
+
+/// Emits `[parse] … enter <rule>` / `leave <rule> (ok|failed)` around a recursive-descent function.
+struct ParseTrace {
+    Parser& parser;
+    const char* rule;
+    bool ok = false;
+
+    ParseTrace(Parser& p, const char* r) : parser(p), rule(r) {
+        p.trace(std::string("enter ").append(r));
+    }
+
+    void markOk() { ok = true; }
+
+    ~ParseTrace() {
+        std::ostringstream oss;
+        oss << "leave " << rule << " (" << (ok ? "ok" : "failed") << ")";
+        parser.trace(oss.str());
+    }
+};
+
+} // namespace
+
 Parser::Parser(const SourceMap& map, DiagnosticBag& diagnostics, const std::vector<Token>& tokens, bool verbose)
     : map_(map), diagnostics_(diagnostics), tokens_(tokens), verbose_(verbose) {
     if (tokens_.empty()) {
@@ -114,6 +137,7 @@ bool Parser::statementStartsHere() const {
 }
 
 std::unique_ptr<CstExpr> Parser::parseExpr() {
+    ParseTrace traceRule(*this, "Expr");
     const std::size_t begin = index_;
     const Token& t = peek();
 
@@ -121,15 +145,18 @@ std::unique_ptr<CstExpr> Parser::parseExpr() {
         const std::string lex(t.lexeme);
         advance();
         auto node = std::make_unique<CstLiteralString>(lex, CstSpan{begin, index_});
+        traceRule.markOk();
         return node;
     }
 
     if (t.kind == TokenKind::KwTrue) {
         advance();
+        traceRule.markOk();
         return std::make_unique<CstLiteralBool>(true, CstSpan{begin, index_});
     }
     if (t.kind == TokenKind::KwFalse) {
         advance();
+        traceRule.markOk();
         return std::make_unique<CstLiteralBool>(false, CstSpan{begin, index_});
     }
 
@@ -144,6 +171,7 @@ std::unique_ptr<CstExpr> Parser::parseExpr() {
         }
         const char name = t.lexeme[0];
         advance();
+        traceRule.markOk();
         return std::make_unique<CstIdentifierExpr>(name, CstSpan{begin, index_});
     }
 
@@ -156,18 +184,20 @@ std::unique_ptr<CstExpr> Parser::parseExpr() {
             if (!right) {
                 return nullptr;
             }
+            traceRule.markOk();
             return std::make_unique<CstAddExpr>(std::move(left), std::move(right), CstSpan{begin, index_});
         }
+        traceRule.markOk();
         return std::make_unique<CstLiteralInt>(lex, CstSpan{begin, index_});
     }
 
     if (t.kind == TokenKind::LeftParen) {
-        trace("parse Expr as parenthesized BooleanExpr");
         std::unique_ptr<CstBinaryBoolExpr> bin = parseBooleanParenExpr();
         if (!bin) {
             return nullptr;
         }
         std::unique_ptr<CstBooleanExpr> base(bin.release());
+        traceRule.markOk();
         return std::make_unique<CstBooleanExprWrapper>(std::move(base), CstSpan{begin, index_});
     }
 
@@ -219,15 +249,18 @@ std::unique_ptr<CstBinaryBoolExpr> Parser::parseBooleanParenExpr() {
 }
 
 std::unique_ptr<CstBooleanExpr> Parser::parseBooleanExpr() {
+    ParseTrace traceRule(*this, "BooleanExpr");
     const std::size_t begin = index_;
     const Token& t = peek();
 
     if (t.kind == TokenKind::KwTrue) {
         advance();
+        traceRule.markOk();
         return std::make_unique<CstBooleanLiteralExpr>(true, CstSpan{begin, index_});
     }
     if (t.kind == TokenKind::KwFalse) {
         advance();
+        traceRule.markOk();
         return std::make_unique<CstBooleanLiteralExpr>(false, CstSpan{begin, index_});
     }
     if (t.kind == TokenKind::LeftParen) {
@@ -235,6 +268,7 @@ std::unique_ptr<CstBooleanExpr> Parser::parseBooleanExpr() {
         if (!bin) {
             return nullptr;
         }
+        traceRule.markOk();
         return std::unique_ptr<CstBooleanExpr>(std::move(bin));
     }
 
@@ -248,7 +282,7 @@ std::unique_ptr<CstBooleanExpr> Parser::parseBooleanExpr() {
 
 std::unique_ptr<CstPrintStatement> Parser::parsePrintStatement() {
     const std::size_t begin = index_;
-    trace("parse PrintStatement");
+    trace("PrintStatement");
     if (!expect(TokenKind::KwPrint, "PrintStatement")) {
         return nullptr;
     }
@@ -267,7 +301,7 @@ std::unique_ptr<CstPrintStatement> Parser::parsePrintStatement() {
 
 std::unique_ptr<CstAssignStatement> Parser::parseAssignStatement() {
     const std::size_t begin = index_;
-    trace("parse AssignStatement");
+    trace("AssignStatement");
     const Token& idTok = peek();
     if (idTok.kind != TokenKind::Identifier || idTok.lexeme.empty()) {
         diagnostics_.addError(
@@ -291,7 +325,7 @@ std::unique_ptr<CstAssignStatement> Parser::parseAssignStatement() {
 
 std::unique_ptr<CstVarDeclStatement> Parser::parseVarDeclStatement() {
     const std::size_t begin = index_;
-    trace("parse VarDeclStatement");
+    trace("VarDeclStatement");
     const TokenKind typeKind = peek().kind;
     if (!isTypeKeyword(typeKind)) {
         diagnostics_.addError(
@@ -321,7 +355,7 @@ std::unique_ptr<CstVarDeclStatement> Parser::parseVarDeclStatement() {
 
 std::unique_ptr<CstWhileStatement> Parser::parseWhileStatement() {
     const std::size_t begin = index_;
-    trace("parse WhileStatement");
+    trace("WhileStatement");
     if (!expect(TokenKind::KwWhile, "WhileStatement")) {
         return nullptr;
     }
@@ -338,7 +372,7 @@ std::unique_ptr<CstWhileStatement> Parser::parseWhileStatement() {
 
 std::unique_ptr<CstIfStatement> Parser::parseIfStatement() {
     const std::size_t begin = index_;
-    trace("parse IfStatement");
+    trace("IfStatement");
     if (!expect(TokenKind::KwIf, "IfStatement")) {
         return nullptr;
     }
@@ -354,23 +388,44 @@ std::unique_ptr<CstIfStatement> Parser::parseIfStatement() {
 }
 
 std::unique_ptr<CstStatement> Parser::parseStatement() {
+    ParseTrace traceRule(*this, "Statement");
     const TokenKind k = peek().kind;
 
     if (k == TokenKind::KwPrint) {
-        return parsePrintStatement();
+        std::unique_ptr<CstPrintStatement> s = parsePrintStatement();
+        if (s) {
+            traceRule.markOk();
+        }
+        return s;
     }
     if (k == TokenKind::KwWhile) {
-        return parseWhileStatement();
+        std::unique_ptr<CstWhileStatement> s = parseWhileStatement();
+        if (s) {
+            traceRule.markOk();
+        }
+        return s;
     }
     if (k == TokenKind::KwIf) {
-        return parseIfStatement();
+        std::unique_ptr<CstIfStatement> s = parseIfStatement();
+        if (s) {
+            traceRule.markOk();
+        }
+        return s;
     }
     if (isTypeKeyword(k)) {
-        return parseVarDeclStatement();
+        std::unique_ptr<CstVarDeclStatement> s = parseVarDeclStatement();
+        if (s) {
+            traceRule.markOk();
+        }
+        return s;
     }
     if (k == TokenKind::Identifier) {
         if (peek(1).kind == TokenKind::Equal) {
-            return parseAssignStatement();
+            std::unique_ptr<CstAssignStatement> s = parseAssignStatement();
+            if (s) {
+                traceRule.markOk();
+            }
+            return s;
         }
         diagnostics_.addError(
             "expected `=` after identifier in assignment, or this is not a valid statement start",
@@ -381,11 +436,12 @@ std::unique_ptr<CstStatement> Parser::parseStatement() {
     }
     if (k == TokenKind::LeftBrace) {
         const std::size_t begin = index_;
-        trace("parse BlockStatement");
+        trace("BlockStatement");
         std::unique_ptr<CstBlock> inner = parseBlock();
         if (!inner) {
             return nullptr;
         }
+        traceRule.markOk();
         return std::make_unique<CstBlockStatement>(std::move(inner), CstSpan{begin, index_});
     }
 
@@ -398,8 +454,8 @@ std::unique_ptr<CstStatement> Parser::parseStatement() {
 }
 
 std::unique_ptr<CstStatementList> Parser::parseStatementList() {
+    ParseTrace traceRule(*this, "StatementList");
     const std::size_t begin = index_;
-    trace("parse StatementList");
     auto list = std::make_unique<CstStatementList>();
     while (statementStartsHere()) {
         std::unique_ptr<CstStatement> st = parseStatement();
@@ -409,12 +465,13 @@ std::unique_ptr<CstStatementList> Parser::parseStatementList() {
         list->addStatement(std::move(st));
     }
     list->setSpan(CstSpan{begin, index_});
+    traceRule.markOk();
     return list;
 }
 
 std::unique_ptr<CstBlock> Parser::parseBlock() {
+    ParseTrace traceRule(*this, "Block");
     const std::size_t begin = index_;
-    trace("parse Block");
     const Token& openBraceToken = peek();
     if (!expect(TokenKind::LeftBrace, "start of Block")) {
         return nullptr;
@@ -433,12 +490,13 @@ std::unique_ptr<CstBlock> Parser::parseBlock() {
     if (!expect(TokenKind::RightBrace, "end of Block")) {
         return nullptr;
     }
+    traceRule.markOk();
     return std::make_unique<CstBlock>(std::move(stmts), CstSpan{begin, index_});
 }
 
 std::unique_ptr<CstProgram> Parser::parseProgram() {
+    ParseTrace traceRule(*this, "Program");
     const std::size_t begin = index_;
-    trace("parse Program");
     std::unique_ptr<CstBlock> block = parseBlock();
     if (!block) {
         return nullptr;
@@ -446,11 +504,12 @@ std::unique_ptr<CstProgram> Parser::parseProgram() {
     if (!expect(TokenKind::DollarEop, "after Program Block (each program must end with `$`)")) {
         return nullptr;
     }
+    traceRule.markOk();
     return std::make_unique<CstProgram>(std::move(block), CstSpan{begin, index_});
 }
 
 std::vector<std::unique_ptr<CstProgram>> Parser::parseTranslationUnit() {
-    trace("parse TranslationUnit (zero or more programs)");
+    trace("TranslationUnit (zero or more programs)");
     std::vector<std::unique_ptr<CstProgram>> programs;
     while (!isAtEnd()) {
         std::unique_ptr<CstProgram> program = parseProgram();
