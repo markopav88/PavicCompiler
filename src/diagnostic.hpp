@@ -8,7 +8,9 @@ namespace pavic {
 
 enum class DiagnosticKind {
     Error,
-    Warning
+    Warning,
+    /// Non-fatal hygiene / style suggestions; do not block parse or later phases.
+    Hint,
 };
 
 struct SourceLocation {
@@ -27,10 +29,12 @@ class DiagnosticBag {
 public:
     void addError(std::string message, SourceLocation location, std::string hint = "");
     void addWarning(std::string message, SourceLocation location, std::string hint = "");
+    void addHint(std::string message, SourceLocation location, std::string detail = "");
 
     bool hasErrors() const;
     std::size_t errorCount() const;
     std::size_t warningCount() const;
+    std::size_t hintCount() const;
     bool empty() const;
     const std::vector<Diagnostic>& all() const;
 
