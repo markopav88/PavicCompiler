@@ -265,6 +265,7 @@ public:
 
     const AstExpr* left() const { return left_.get(); }
     const AstExpr* right() const { return right_.get(); }
+    Op op() const { return op_; }
 
 private:
     Op op_;
