@@ -13,6 +13,8 @@ add_executable(pavicc
     src/lexer.cpp
     src/cst.cpp
     src/parser.cpp
+    src/ast.cpp
+    src/ast_lower.cpp
 )
 
 target_include_directories(pavicc PRIVATE src)

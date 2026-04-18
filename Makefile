@@ -10,7 +10,9 @@ SOURCES := \
 	src/token.cpp \
 	src/lexer.cpp \
 	src/cst.cpp \
-	src/parser.cpp
+	src/parser.cpp \
+	src/ast.cpp \
+	src/ast_lower.cpp
 
 TARGET := pavicc
 

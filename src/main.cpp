@@ -1,3 +1,5 @@
+#include "ast.hpp"
+#include "ast_lower.hpp"
 #include "diagnostic.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
@@ -5,6 +7,7 @@
 
 #include <fstream>
 #include <iostream>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -126,6 +129,20 @@ int main(int argc, char** argv) {
             }
         }
         std::cout << "========== end CST ==========\n";
+
+        std::cout << "========== Abstract Syntax Tree ==========\n";
+        for (std::size_t i = 0; i < programs.size(); ++i) {
+            if (i > 0) {
+                std::cout << "\n--- program " << (i + 1) << " (AST) ---\n";
+            }
+            if (programs[i]) {
+                std::unique_ptr<pavic::AstProgram> ast =
+                    pavic::lowerCstToAst(sourceMap, tokens, *programs[i], !quiet);
+                ast->print(std::cout, 0);
+            }
+        }
+        std::cout << "========== end AST ==========\n";
+
         std::cout << "[driver] Parse succeeded (" << programs.size() << " program(s)); warnings: "
                   << diagnostics.warningCount() << ", hints: " << diagnostics.hintCount()
                   << ". (Only errors block CST and later phases; warnings and hints are informational.)\n";
