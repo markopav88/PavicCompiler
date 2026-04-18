@@ -109,9 +109,8 @@ int main(int argc, char** argv) {
 
     if (diagnostics.errorCount() > 0) {
         if (!quiet) {
-            std::cout << "[driver] Parse failed with " << diagnostics.errorCount() << " error(s); CST not printed. "
-                      << "(Warnings: " << diagnostics.warningCount() << ", hints: " << diagnostics.hintCount()
-                      << " — these do not block future phases once parse succeeds.)\n";
+            std::cout << "[driver] Parse failed: " << diagnostics.errorCount()
+                      << " error(s). CST was not printed.\n";
         }
         return kExitFailure;
     }
@@ -128,7 +127,8 @@ int main(int argc, char** argv) {
         }
         std::cout << "========== end CST ==========\n";
         std::cout << "[driver] Parse succeeded (" << programs.size() << " program(s)); warnings: "
-                  << diagnostics.warningCount() << ", hints: " << diagnostics.hintCount() << ".\n";
+                  << diagnostics.warningCount() << ", hints: " << diagnostics.hintCount()
+                  << ". (Only errors block CST and later phases; warnings and hints are informational.)\n";
     }
 
     return kExitSuccess;
