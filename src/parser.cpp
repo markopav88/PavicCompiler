@@ -415,12 +415,20 @@ std::unique_ptr<CstStatementList> Parser::parseStatementList() {
 std::unique_ptr<CstBlock> Parser::parseBlock() {
     const std::size_t begin = index_;
     trace("parse Block");
+    const Token& openBraceToken = peek();
     if (!expect(TokenKind::LeftBrace, "start of Block")) {
         return nullptr;
     }
     std::unique_ptr<CstStatementList> stmts = parseStatementList();
     if (!stmts) {
         return nullptr;
+    }
+    if (stmts->statements().empty()) {
+        diagnostics_.addHint(
+            "this `{ ... }` block contains no statements",
+            map_.locationAt(openBraceToken.offset),
+            "Empty blocks are valid in the grammar; add statements when you implement this region."
+        );
     }
     if (!expect(TokenKind::RightBrace, "end of Block")) {
         return nullptr;

@@ -31,18 +31,21 @@ void Lexer::traceLexSummary(const std::vector<Token>& tokens) const {
 
     std::size_t errorCount = 0;
     std::size_t warningCount = 0;
+    std::size_t hintCount = 0;
     for (const auto& diagnostic : diagnostics_.all()) {
         if (diagnostic.kind == DiagnosticKind::Error) {
             ++errorCount;
-        } else {
+        } else if (diagnostic.kind == DiagnosticKind::Warning) {
             ++warningCount;
+        } else if (diagnostic.kind == DiagnosticKind::Hint) {
+            ++hintCount;
         }
     }
 
     std::cout << "[lex] stage " << kNumLexTraceStages << "/" << kNumLexTraceStages
               << ": lex session complete — tokens=" << tokens.size()
               << " (including EOF), diagnostics: " << errorCount << " error(s), " << warningCount
-              << " warning(s)\n";
+              << " warning(s), " << hintCount << " hint(s)\n";
 }
 
 void Lexer::traceProgramBoundary(std::size_t endedProgramIndex, SourceLocation location) const {
