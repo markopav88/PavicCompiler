@@ -15,6 +15,8 @@ add_executable(pavicc
     src/parser.cpp
     src/ast.cpp
     src/ast_lower.cpp
+    src/symbol_table.cpp
+    src/semantic_scope.cpp
 )
 
 target_include_directories(pavicc PRIVATE src)

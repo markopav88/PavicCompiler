@@ -1,6 +1,8 @@
 #include "ast.hpp"
 #include "ast_lower.hpp"
 #include "diagnostic.hpp"
+#include "semantic_scope.hpp"
+#include "symbol_table.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "source.hpp"
@@ -118,6 +120,16 @@ int main(int argc, char** argv) {
         return kExitFailure;
     }
 
+    std::vector<std::unique_ptr<pavic::AstProgram>> astPrograms;
+    astPrograms.reserve(programs.size());
+    for (std::size_t i = 0; i < programs.size(); ++i) {
+        if (programs[i]) {
+            astPrograms.push_back(pavic::lowerCstToAst(sourceMap, tokens, *programs[i], !quiet));
+        } else {
+            astPrograms.push_back(nullptr);
+        }
+    }
+
     if (!quiet) {
         std::cout << "========== Concrete Syntax Tree ==========\n";
         for (std::size_t i = 0; i < programs.size(); ++i) {
@@ -131,21 +143,53 @@ int main(int argc, char** argv) {
         std::cout << "========== end CST ==========\n";
 
         std::cout << "========== Abstract Syntax Tree ==========\n";
-        for (std::size_t i = 0; i < programs.size(); ++i) {
+        for (std::size_t i = 0; i < astPrograms.size(); ++i) {
             if (i > 0) {
                 std::cout << "\n--- program " << (i + 1) << " (AST) ---\n";
             }
-            if (programs[i]) {
-                std::unique_ptr<pavic::AstProgram> ast =
-                    pavic::lowerCstToAst(sourceMap, tokens, *programs[i], !quiet);
-                ast->print(std::cout, 0);
+            if (astPrograms[i]) {
+                astPrograms[i]->print(std::cout, 0);
             }
         }
         std::cout << "========== end AST ==========\n";
+    }
 
-        std::cout << "[driver] Parse succeeded (" << programs.size() << " program(s)); warnings: "
+    const std::size_t errorsBeforeSemantic = diagnostics.errorCount();
+    std::vector<std::vector<pavic::SymbolRecord>> symbolTables;
+    symbolTables.reserve(astPrograms.size());
+    for (std::size_t i = 0; i < astPrograms.size(); ++i) {
+        std::vector<pavic::SymbolRecord> table;
+        if (astPrograms[i]) {
+            pavic::runScopeCheck(*astPrograms[i], sourceMap, tokens, diagnostics, !quiet, table);
+        }
+        symbolTables.push_back(std::move(table));
+    }
+
+    for (const auto& diagnostic : diagnostics.all()) {
+        std::cerr << pavic::formatDiagnostic(sourcePath, diagnostic) << "\n";
+    }
+
+    if (diagnostics.errorCount() > errorsBeforeSemantic) {
+        if (!quiet) {
+            std::cout << "[driver] Semantic (scope) check failed: " << (diagnostics.errorCount() - errorsBeforeSemantic)
+                      << " error(s). Symbol table was not printed.\n";
+        }
+        return kExitFailure;
+    }
+
+    if (!quiet) {
+        std::cout << "========== Symbol table (scope) ==========\n";
+        for (std::size_t i = 0; i < symbolTables.size(); ++i) {
+            if (i > 0) {
+                std::cout << "\n--- program " << (i + 1) << " ---\n";
+            }
+            pavic::printSymbolTable(std::cout, symbolTables[i]);
+        }
+        std::cout << "========== end symbol table ==========\n";
+
+        std::cout << "[driver] Parse and scope check succeeded (" << programs.size() << " program(s)); warnings: "
                   << diagnostics.warningCount() << ", hints: " << diagnostics.hintCount()
-                  << ". (Only errors block CST and later phases; warnings and hints are informational.)\n";
+                  << ". (Only errors block later phases; warnings and hints are informational.)\n";
     }
 
     return kExitSuccess;
