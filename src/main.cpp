@@ -100,16 +100,32 @@ int main(int argc, char** argv) {
     pavic::Parser parser(sourceMap, diagnostics, tokens, !quiet);
     parser.trace("parser driver initialized (token cursor at start of stream)");
 
+    std::vector<std::unique_ptr<pavic::CstProgram>> programs = parser.parseTranslationUnit();
+
+    for (const auto& diagnostic : diagnostics.all()) {
+        std::cerr << pavic::formatDiagnostic(sourcePath, diagnostic) << "\n";
+    }
+
     if (diagnostics.errorCount() > 0) {
-        for (const auto& diagnostic : diagnostics.all()) {
-            std::cerr << pavic::formatDiagnostic(sourcePath, diagnostic) << "\n";
+        if (!quiet) {
+            std::cout << "[driver] Parse failed with " << diagnostics.errorCount() << " error(s); CST not printed.\n";
         }
         return kExitFailure;
     }
 
     if (!quiet) {
-        std::cout << "[driver] Lex succeeded with " << diagnostics.warningCount()
-                  << " warning(s); parser driver ready for CST parse (Step 3+).\n";
+        std::cout << "========== Concrete Syntax Tree ==========\n";
+        for (std::size_t i = 0; i < programs.size(); ++i) {
+            if (i > 0) {
+                std::cout << "\n--- program " << (i + 1) << " ---\n";
+            }
+            if (programs[i]) {
+                programs[i]->print(std::cout, 0);
+            }
+        }
+        std::cout << "========== end CST ==========\n";
+        std::cout << "[driver] Parse succeeded (" << programs.size()
+                  << " program(s)); lex warnings: " << diagnostics.warningCount() << ".\n";
     }
 
     return kExitSuccess;
