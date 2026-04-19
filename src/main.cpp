@@ -3,6 +3,7 @@
 #include "diagnostic.hpp"
 #include "semantic_scope.hpp"
 #include "semantic_type.hpp"
+#include "semantic_usage.hpp"
 #include "symbol_table.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
@@ -173,9 +174,21 @@ int main(int argc, char** argv) {
 
     const std::size_t errorsAfterScope = diagnostics.errorCount();
 
+    std::vector<bool> typeOkPerProgram;
+    typeOkPerProgram.reserve(astPrograms.size());
     for (std::size_t i = 0; i < astPrograms.size(); ++i) {
-        if (scopeOkPerProgram[i] && astPrograms[i]) {
+        bool typeOk = false;
+        if (astPrograms[i] && scopeOkPerProgram[i]) {
+            const std::size_t beforeType = diagnostics.errorCount();
             pavic::runTypeCheck(*astPrograms[i], sourceMap, tokens, diagnostics, !quiet);
+            typeOk = diagnostics.errorCount() == beforeType;
+        }
+        typeOkPerProgram.push_back(typeOk);
+    }
+
+    for (std::size_t i = 0; i < astPrograms.size(); ++i) {
+        if (astPrograms[i] && typeOkPerProgram[i]) {
+            pavic::runUsageAndInitHints(*astPrograms[i], sourceMap, tokens, diagnostics, !quiet);
         }
     }
 
@@ -204,7 +217,8 @@ int main(int argc, char** argv) {
         }
         std::cout << "========== end symbol table ==========\n";
 
-        std::cout << "[driver] Parse, scope, and type check succeeded (" << programs.size() << " program(s)); warnings: "
+        std::cout << "[driver] Parse, scope, type, and usage checks succeeded (" << programs.size()
+                  << " program(s)); warnings: "
                   << diagnostics.warningCount() << ", hints: " << diagnostics.hintCount()
                   << ". (Only errors block later phases; warnings and hints are informational.)\n";
     }

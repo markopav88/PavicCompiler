@@ -18,6 +18,7 @@ add_executable(pavicc
     src/symbol_table.cpp
     src/semantic_scope.cpp
     src/semantic_type.cpp
+    src/semantic_usage.cpp
 )
 
 target_include_directories(pavicc PRIVATE src)
