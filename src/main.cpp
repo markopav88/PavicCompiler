@@ -23,7 +23,7 @@ constexpr int kExitFailure = 1;
 
 void printUsage(const char* executableName) {
     std::cerr << "Usage: " << executableName << " [-q|--quiet] <source-file>\n";
-    std::cerr << "  (verbose lexer trace is the default; use -q to disable)\n";
+    std::cerr << "  Verbose traces (lexer, parser, semantic) are on by default; `-q` disables them.\n";
 }
 
 bool readFileToString(const std::string& filePath, std::string& contents) {
@@ -143,17 +143,6 @@ int main(int argc, char** argv) {
             }
         }
         std::cout << "========== end CST ==========\n";
-
-        std::cout << "========== Abstract Syntax Tree ==========\n";
-        for (std::size_t i = 0; i < astPrograms.size(); ++i) {
-            if (i > 0) {
-                std::cout << "\n--- program " << (i + 1) << " (AST) ---\n";
-            }
-            if (astPrograms[i]) {
-                astPrograms[i]->print(std::cout, 0);
-            }
-        }
-        std::cout << "========== end AST ==========\n";
     }
 
     const std::size_t errorsBeforeSemantic = diagnostics.errorCount();
@@ -202,13 +191,24 @@ int main(int argc, char** argv) {
             const std::size_t typeErrs = diagnostics.errorCount() - errorsAfterScope;
             std::cout << "[driver] Semantic check failed: " << (diagnostics.errorCount() - errorsBeforeSemantic)
                       << " error(s) (scope: " << scopeErrs << ", type: " << typeErrs
-                      << "). Symbol table was not printed.\n";
+                      << "). Abstract syntax tree and symbol table were not printed; code generation is skipped.\n";
         }
         return kExitFailure;
     }
 
     if (!quiet) {
-        std::cout << "========== Symbol table (scope) ==========\n";
+        std::cout << "========== Abstract Syntax Tree ==========\n";
+        for (std::size_t i = 0; i < astPrograms.size(); ++i) {
+            if (i > 0) {
+                std::cout << "\n--- program " << (i + 1) << " (AST) ---\n";
+            }
+            if (astPrograms[i]) {
+                astPrograms[i]->print(std::cout, 0);
+            }
+        }
+        std::cout << "========== end AST ==========\n";
+
+        std::cout << "========== Symbol table (scope + type) ==========\n";
         for (std::size_t i = 0; i < symbolTables.size(); ++i) {
             if (i > 0) {
                 std::cout << "\n--- program " << (i + 1) << " ---\n";
@@ -217,10 +217,12 @@ int main(int argc, char** argv) {
         }
         std::cout << "========== end symbol table ==========\n";
 
+        std::cout << "[driver] Code generation: not implemented (semantic checks passed; nothing emitted).\n";
+
         std::cout << "[driver] Parse, scope, type, and usage checks succeeded (" << programs.size()
                   << " program(s)); warnings: "
                   << diagnostics.warningCount() << ", hints: " << diagnostics.hintCount()
-                  << ". (Only errors block later phases; warnings and hints are informational.)\n";
+                  << ". (Only errors block AST, symbol table, and codegen; warnings and hints are informational.)\n";
     }
 
     return kExitSuccess;

@@ -48,9 +48,9 @@ void printSymbolTable(std::ostream& os, const std::vector<SymbolRecord>& symbols
         os << "(no declarations)\n";
         return;
     }
-    os << std::left << std::setw(8) << "name" << std::setw(12) << "type" << std::setw(8) << "scope" << "declared at\n";
+    os << std::left << std::setw(8) << "name" << std::setw(12) << "type" << std::setw(14) << "scope depth" << "declared at\n";
     for (const SymbolRecord& s : symbols) {
-        os << std::setw(8) << std::string(1, s.name) << std::setw(12) << s.declType << std::setw(8) << s.scopeDepth
+        os << std::setw(8) << std::string(1, s.name) << std::setw(12) << s.declType << std::setw(14) << s.scopeDepth
            << s.declaredAt.line << ":" << s.declaredAt.column << "\n";
     }
 }
