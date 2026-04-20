@@ -14,7 +14,7 @@ struct Token;
 /// Fills `outSymbols` with declaration order (for printing when the pass adds no new errors).
 /// Returns true iff this pass did not add any new errors to `diagnostics`.
 bool runScopeCheck(
-    const AstProgram& ast,
+    AstProgram& ast,
     const SourceMap& map,
     const std::vector<Token>& tokens,
     DiagnosticBag& diagnostics,
