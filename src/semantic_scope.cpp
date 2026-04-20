@@ -38,7 +38,7 @@ public:
     )
         : map_(map), tokens_(tokens), diagnostics_(diagnostics), verbose_(verbose) {}
 
-    void checkProgram(const AstProgram& program) {
+    void checkProgram(AstProgram& program) {
         semanticTrace(verbose_, map_, tokens_, program.span(), "enter Program (root Block is one scope)");
         visitBlock(*program.block());
         semanticTrace(verbose_, map_, tokens_, program.span(), "leave Program");
@@ -47,11 +47,11 @@ public:
     void takeSymbols(std::vector<SymbolRecord>& out) { out = scopes_.orderedDeclarations(); }
 
 private:
-    void visitBlock(const AstBlock& block) {
+    void visitBlock(AstBlock& block) {
         semanticTrace(verbose_, map_, tokens_, block.span(), "enter Block (push scope)");
         scopes_.pushScope();
         if (block.statements()) {
-            for (const auto& st : block.statements()->statements()) {
+            for (auto& st : block.statements()->statements()) {
                 if (st) {
                     visitStatement(*st);
                 }
@@ -61,31 +61,31 @@ private:
         semanticTrace(verbose_, map_, tokens_, block.span(), "leave Block (pop scope)");
     }
 
-    void visitStatement(const AstStatement& st) {
+    void visitStatement(AstStatement& st) {
         switch (st.nodeKind()) {
         case AstNodeKind::PrintStatement:
-            visitExpr(*static_cast<const AstPrintStatement&>(st).expr());
+            visitExpr(*static_cast<AstPrintStatement&>(st).expr());
             return;
         case AstNodeKind::AssignStatement:
-            visitAssign(static_cast<const AstAssignStatement&>(st));
+            visitAssign(static_cast<AstAssignStatement&>(st));
             return;
         case AstNodeKind::VarDeclStatement:
             visitVarDecl(static_cast<const AstVarDeclStatement&>(st));
             return;
         case AstNodeKind::WhileStatement: {
-            const auto& w = static_cast<const AstWhileStatement&>(st);
+            auto& w = static_cast<AstWhileStatement&>(st);
             visitBooleanExpr(*w.condition());
             visitBlock(*w.body());
             return;
         }
         case AstNodeKind::IfStatement: {
-            const auto& i = static_cast<const AstIfStatement&>(st);
+            auto& i = static_cast<AstIfStatement&>(st);
             visitBooleanExpr(*i.condition());
             visitBlock(*i.body());
             return;
         }
         case AstNodeKind::BlockStatement:
-            visitBlock(*static_cast<const AstBlockStatement&>(st).block());
+            visitBlock(*static_cast<AstBlockStatement&>(st).block());
             return;
         default:
             break;
@@ -93,7 +93,7 @@ private:
         throw std::logic_error("visitStatement: unexpected AST statement kind");
     }
 
-    void visitAssign(const AstAssignStatement& st) {
+    void visitAssign(AstAssignStatement& st) {
         const char lhs = st.name();
         const SourceLocation lhsLoc = locationAtSpan(map_, tokens_, st.span());
         const SymbolRecord* sym = scopes_.lookup(lhs);
@@ -101,6 +101,9 @@ private:
             std::ostringstream oss;
             oss << "lookup `" << lhs << "` for assignment: " << (sym ? "found" : "not found");
             semanticTrace(verbose_, map_, tokens_, st.span(), oss.str());
+        }
+        if (sym) {
+            st.setLhsResolvedDeclScope(sym->scopeId);
         }
         if (!sym) {
             std::ostringstream msg;
@@ -131,7 +134,7 @@ private:
         }
     }
 
-    void visitExpr(const AstExpr& e) {
+    void visitExpr(AstExpr& e) {
         const AstSpan sp = e.span();
         switch (e.nodeKind()) {
         case AstNodeKind::LiteralInt:
@@ -139,12 +142,16 @@ private:
         case AstNodeKind::LiteralBool:
             return;
         case AstNodeKind::IdentifierExpr: {
-            const char name = static_cast<const AstIdentifierExpr&>(e).name();
+            auto& id = static_cast<AstIdentifierExpr&>(e);
+            const char name = id.name();
             const SymbolRecord* sym = scopes_.lookup(name);
             if (verbose_) {
                 std::ostringstream oss;
                 oss << "lookup `" << name << "` in expression: " << (sym ? "found" : "not found");
                 semanticTrace(verbose_, map_, tokens_, sp, oss.str());
+            }
+            if (sym) {
+                id.setResolvedDeclScope(sym->scopeId);
             }
             if (!sym) {
                 std::ostringstream msg;
@@ -156,13 +163,13 @@ private:
             return;
         }
         case AstNodeKind::AddExpr: {
-            const auto& a = static_cast<const AstAddExpr&>(e);
+            auto& a = static_cast<AstAddExpr&>(e);
             visitExpr(*a.left());
             visitExpr(*a.right());
             return;
         }
         case AstNodeKind::BooleanExprWrapper:
-            visitBooleanExpr(*static_cast<const AstBooleanExprWrapper&>(e).inner());
+            visitBooleanExpr(*static_cast<AstBooleanExprWrapper&>(e).inner());
             return;
         default:
             break;
@@ -170,10 +177,10 @@ private:
         throw std::logic_error("visitExpr: unexpected AST expression kind");
     }
 
-    void visitBooleanExpr(const AstBooleanExpr& b) {
+    void visitBooleanExpr(AstBooleanExpr& b) {
         switch (b.nodeKind()) {
         case AstNodeKind::BinaryBoolExpr: {
-            const auto& c = static_cast<const AstBinaryBoolExpr&>(b);
+            auto& c = static_cast<AstBinaryBoolExpr&>(b);
             visitExpr(*c.left());
             visitExpr(*c.right());
             return;
@@ -196,7 +203,7 @@ private:
 } // namespace
 
 bool runScopeCheck(
-    const AstProgram& ast,
+    AstProgram& ast,
     const SourceMap& map,
     const std::vector<Token>& tokens,
     DiagnosticBag& diagnostics,
