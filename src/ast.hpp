@@ -66,6 +66,7 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    AstBlock* block() { return block_.get(); }
     const AstBlock* block() const { return block_.get(); }
 
 private:
@@ -78,6 +79,7 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    AstStatementList* statements() { return statements_.get(); }
     const AstStatementList* statements() const { return statements_.get(); }
 
 private:
@@ -92,6 +94,7 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    std::vector<std::unique_ptr<AstStatement>>& statements() { return statements_; }
     const std::vector<std::unique_ptr<AstStatement>>& statements() const { return statements_; }
 
 private:
@@ -109,6 +112,7 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    AstExpr* expr() { return expr_.get(); }
     const AstExpr* expr() const { return expr_.get(); }
 
 private:
@@ -122,11 +126,23 @@ public:
     void print(std::ostream& os, int depth) const override;
 
     char name() const { return name_; }
+
+    /// Filled by `runScopeCheck` when the LHS resolves to a declaration (nearest binding).
+    bool hasLhsResolvedDeclScope() const { return lhsResolvedDeclBinding_; }
+    std::size_t lhsResolvedDeclScopeId() const { return lhsResolvedDeclScopeId_; }
+    void setLhsResolvedDeclScope(std::size_t declScopeId) {
+        lhsResolvedDeclBinding_ = true;
+        lhsResolvedDeclScopeId_ = declScopeId;
+    }
+
+    AstExpr* expr() { return expr_.get(); }
     const AstExpr* expr() const { return expr_.get(); }
 
 private:
     char name_;
     std::unique_ptr<AstExpr> expr_;
+    bool lhsResolvedDeclBinding_ = false;
+    std::size_t lhsResolvedDeclScopeId_ = 0;
 };
 
 class AstVarDeclStatement final : public AstStatement {
@@ -149,7 +165,9 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    AstBooleanExpr* condition() { return condition_.get(); }
     const AstBooleanExpr* condition() const { return condition_.get(); }
+    AstBlock* body() { return body_.get(); }
     const AstBlock* body() const { return body_.get(); }
 
 private:
@@ -163,7 +181,9 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    AstBooleanExpr* condition() { return condition_.get(); }
     const AstBooleanExpr* condition() const { return condition_.get(); }
+    AstBlock* body() { return body_.get(); }
     const AstBlock* body() const { return body_.get(); }
 
 private:
@@ -177,6 +197,7 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    AstBlock* block() { return block_.get(); }
     const AstBlock* block() const { return block_.get(); }
 
 private:
@@ -232,8 +253,18 @@ public:
 
     char name() const { return name_; }
 
+    /// Filled by `runScopeCheck` when this use resolves to a declaration (nearest binding).
+    bool hasResolvedDeclScope() const { return resolvedDeclBinding_; }
+    std::size_t resolvedDeclScopeId() const { return resolvedDeclScopeId_; }
+    void setResolvedDeclScope(std::size_t declScopeId) {
+        resolvedDeclBinding_ = true;
+        resolvedDeclScopeId_ = declScopeId;
+    }
+
 private:
     char name_;
+    bool resolvedDeclBinding_ = false;
+    std::size_t resolvedDeclScopeId_ = 0;
 };
 
 class AstAddExpr final : public AstExpr {
@@ -242,7 +273,9 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    AstExpr* left() { return left_.get(); }
     const AstExpr* left() const { return left_.get(); }
+    AstExpr* right() { return right_.get(); }
     const AstExpr* right() const { return right_.get(); }
 
 private:
@@ -263,7 +296,9 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    AstExpr* left() { return left_.get(); }
     const AstExpr* left() const { return left_.get(); }
+    AstExpr* right() { return right_.get(); }
     const AstExpr* right() const { return right_.get(); }
     Op op() const { return op_; }
 
@@ -292,6 +327,7 @@ public:
 
     void print(std::ostream& os, int depth) const override;
 
+    AstBooleanExpr* inner() { return inner_.get(); }
     const AstBooleanExpr* inner() const { return inner_.get(); }
 
 private:
