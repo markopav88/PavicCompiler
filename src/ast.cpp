@@ -97,7 +97,11 @@ AstAssignStatement::AstAssignStatement(char name, std::unique_ptr<AstExpr> expr,
 void AstAssignStatement::print(std::ostream& os, int depth) const {
     writeHeader(os, depth, "AssignStatement (AST)", span_);
     writeIndent(os, depth + 1);
-    os << "name: `" << name_ << "`\n";
+    os << "name: `" << name_ << "`";
+    if (lhsResolvedDeclBinding_) {
+        os << "  [resolved decl scope id: " << lhsResolvedDeclScopeId_ << "]";
+    }
+    os << "\n";
     if (expr_) {
         expr_->print(os, depth + 1);
     }
@@ -187,7 +191,11 @@ AstIdentifierExpr::AstIdentifierExpr(char name, AstSpan span) : AstExpr(AstNodeK
 void AstIdentifierExpr::print(std::ostream& os, int depth) const {
     writeHeader(os, depth, "IdentifierExpr (AST)", span_);
     writeIndent(os, depth + 1);
-    os << "name: `" << name_ << "`\n";
+    os << "name: `" << name_ << "`";
+    if (resolvedDeclBinding_) {
+        os << "  [resolved decl scope id: " << resolvedDeclScopeId_ << "]";
+    }
+    os << "\n";
 }
 
 AstAddExpr::AstAddExpr(std::unique_ptr<AstExpr> left, std::unique_ptr<AstExpr> right, AstSpan span)
