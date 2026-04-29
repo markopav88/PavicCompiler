@@ -19,6 +19,8 @@ add_executable(pavicc
     src/semantic_scope.cpp
     src/semantic_type.cpp
     src/semantic_usage.cpp
+    src/codegen/memory_layout.cpp
+    src/codegen/code_buffer.cpp
 )
 
 target_include_directories(pavicc PRIVATE src)
