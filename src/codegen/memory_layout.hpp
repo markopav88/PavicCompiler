@@ -30,8 +30,14 @@ public:
     /// Returns the low address of `byteSize` contiguous bytes; reuses address if already allocated.
     std::uint16_t varSlot(VarKey key, std::size_t byteSize);
 
+    /// Address previously assigned by `varSlot` (undefined if `key` was never bound).
+    std::uint16_t addressOf(VarKey key) const;
+
     /// Append raw bytes for a zero-terminated string literal; returns the address of the first byte.
     std::uint16_t allocateStringLiteral(const std::vector<std::uint8_t>& utf8OrAsciiBytes);
+
+    /// Scratch/temporaries (e.g. one byte for `ADC` staging). Not keyed by source name.
+    std::uint16_t allocateAnonymous(std::size_t byteSize);
 
     std::uint16_t nextFreeAddress() const { return nextAddr_; }
 
