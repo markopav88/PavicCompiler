@@ -175,8 +175,11 @@ private:
                 codegenError(e.span(), "codegen: integer literal out of range for 8-bit immediate LDA", "Use values between 0 and 255, or extend the generator.");
                 return false;
             }
-            buffer_.emitU8(kOpLdaImm);
-            buffer_.emitU8(static_cast<std::uint8_t>(value));
+                codegenTrace(verbose_, map_, tokens_, e.span(), "emit LiteralInt → A (LDA #imm)");
+                buffer_.emitU8(kOpLdaImm);
+                buffer_.emitU8(imm);
+            } else {
+                codegenTrace(verbose_, map_, tokens_, e.span(), "emit LiteralInt → Y (LDY #imm)");
             return true;
         }
         case AstNodeKind::IdentifierExpr: {
@@ -187,8 +190,11 @@ private:
             }
             const codegen::VarKey key{id.name(), id.resolvedDeclScopeId()};
             const std::uint16_t addr = layout_.addressOf(key);
-            buffer_.emitU8(kOpLdaAbs);
-            buffer_.emitAddr16LE(addr);
+                codegenTrace(verbose_, map_, tokens_, e.span(), "emit IdentifierExpr → A (LDA abs)");
+                buffer_.emitU8(kOpLdaAbs);
+                buffer_.emitAddr16LE(addr);
+            } else {
+                codegenTrace(verbose_, map_, tokens_, e.span(), "emit IdentifierExpr → Y (LDY abs)");
             return true;
         }
         case AstNodeKind::AddExpr: {
@@ -214,6 +220,16 @@ private:
                 buffer_.emitU8(kOpTay);
             }
             return true;
+        case AstNodeKind::BooleanExprWrapper: {
+            auto& w = static_cast<AstBooleanExprWrapper&>(e);
+            codegenTrace(verbose_, map_, tokens_, e.span(), "emit BooleanExprWrapper: lower to 0/1 in A");
+            if (!emitBooleanExprAsIntInA(*w.inner())) {
+                return false;
+            }
+            if (dest == ExprTarget::RegisterY) {
+                codegenTrace(verbose_, map_, tokens_, e.span(), "emit BooleanExprWrapper: TAY");
+                buffer_.emitU8(kOpTay);
+            }
             return true;
         }
         case AstNodeKind::LiteralString:
