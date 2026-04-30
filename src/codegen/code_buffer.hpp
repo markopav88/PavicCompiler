@@ -21,6 +21,9 @@ public:
     /// Patch a byte at `offset` (for later label back-patching).
     void patchU8(std::size_t offset, std::uint8_t b);
 
+    /// Patch two bytes at `offset` (little-endian 16-bit value).
+    void patchAddr16LE(std::size_t offset, std::uint16_t addr);
+
 private:
     std::vector<std::uint8_t> bytes_;
 };

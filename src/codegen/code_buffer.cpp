@@ -16,5 +16,10 @@ void CodeBuffer::patchU8(std::size_t offset, std::uint8_t b) {
     bytes_.at(offset) = b;
 }
 
+void CodeBuffer::patchAddr16LE(std::size_t offset, std::uint16_t addr) {
+    bytes_.at(offset) = static_cast<std::uint8_t>(addr & 0xFF);
+    bytes_.at(offset + 1) = static_cast<std::uint8_t>((addr >> 8) & 0xFF);
+}
+
 } // namespace codegen
 } // namespace pavic
