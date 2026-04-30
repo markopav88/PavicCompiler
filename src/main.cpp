@@ -5,10 +5,13 @@
 #include "semantic_type.hpp"
 #include "semantic_usage.hpp"
 #include "symbol_table.hpp"
+#include "codegen/codegen.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "source.hpp"
 
+#include <cstdint>
+#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <memory>
@@ -23,7 +26,7 @@ constexpr int kExitFailure = 1;
 
 void printUsage(const char* executableName) {
     std::cerr << "Usage: " << executableName << " [-q|--quiet] <source-file>\n";
-    std::cerr << "  Verbose traces (lexer, parser, semantic) are on by default; `-q` disables them.\n";
+    std::cerr << "  Verbose traces (lexer, parser, semantic, codegen) are on by default; `-q` disables them.\n";
 }
 
 bool readFileToString(const std::string& filePath, std::string& contents) {
@@ -175,9 +178,31 @@ int main(int argc, char** argv) {
         typeOkPerProgram.push_back(typeOk);
     }
 
+    const std::size_t errorsAfterType = diagnostics.errorCount();
+
     for (std::size_t i = 0; i < astPrograms.size(); ++i) {
         if (astPrograms[i] && typeOkPerProgram[i]) {
             pavic::runUsageAndInitHints(*astPrograms[i], sourceMap, tokens, diagnostics, !quiet);
+        }
+    }
+
+    const std::size_t errorsAfterUsage = diagnostics.errorCount();
+
+    const pavic::codegen::CodeGenTarget codegenTarget{};
+    std::vector<std::vector<std::uint8_t>> objectCodePerProgram;
+    objectCodePerProgram.resize(astPrograms.size());
+    for (std::size_t i = 0; i < astPrograms.size(); ++i) {
+        if (astPrograms[i] && typeOkPerProgram[i]) {
+            pavic::generate6502Program(
+                *astPrograms[i],
+                sourceMap,
+                tokens,
+                symbolTables[i],
+                codegenTarget,
+                diagnostics,
+                !quiet,
+                objectCodePerProgram[i]
+            );
         }
     }
 
@@ -188,10 +213,11 @@ int main(int argc, char** argv) {
     if (diagnostics.errorCount() > errorsBeforeSemantic) {
         if (!quiet) {
             const std::size_t scopeErrs = errorsAfterScope - errorsBeforeSemantic;
-            const std::size_t typeErrs = diagnostics.errorCount() - errorsAfterScope;
-            std::cout << "[driver] Semantic check failed: " << (diagnostics.errorCount() - errorsBeforeSemantic)
-                      << " error(s) (scope: " << scopeErrs << ", type: " << typeErrs
-                      << "). Abstract syntax tree and symbol table were not printed; code generation is skipped.\n";
+            const std::size_t typeErrs = errorsAfterType - errorsAfterScope;
+            const std::size_t codegenErrs = diagnostics.errorCount() - errorsAfterUsage;
+            std::cout << "[driver] Semantic/codegen check failed: " << (diagnostics.errorCount() - errorsBeforeSemantic)
+                      << " error(s) (scope: " << scopeErrs << ", type: " << typeErrs << ", codegen: " << codegenErrs
+                      << "). Abstract syntax tree and symbol table were not printed; code generation is incomplete.\n";
         }
         return kExitFailure;
     }
@@ -217,12 +243,33 @@ int main(int argc, char** argv) {
         }
         std::cout << "========== end symbol table ==========\n";
 
-        std::cout << "[driver] Code generation: not implemented (semantic checks passed; nothing emitted).\n";
+        std::cout << "========== 6502a object bytes (per program) ==========\n";
+        for (std::size_t i = 0; i < objectCodePerProgram.size(); ++i) {
+            if (i > 0) {
+                std::cout << "\n--- program " << (i + 1) << " ---\n";
+            }
+            const auto& bytes = objectCodePerProgram[i];
+            if (bytes.empty()) {
+                std::cout << "(no object code; program skipped or not type-checked)\n";
+                continue;
+            }
+            std::cout << "bytes (" << bytes.size() << "): ";
+            for (std::size_t b = 0; b < bytes.size(); ++b) {
+                if (b != 0) {
+                    std::cout << ' ';
+                }
+                char buf[4];
+                std::snprintf(buf, sizeof(buf), "%02X", static_cast<unsigned>(bytes[b]));
+                std::cout << buf;
+            }
+            std::cout << "\n";
+        }
+        std::cout << "========== end object bytes ==========\n";
 
-        std::cout << "[driver] Parse, scope, type, and usage checks succeeded (" << programs.size()
-                  << " program(s)); warnings: "
-                  << diagnostics.warningCount() << ", hints: " << diagnostics.hintCount()
-                  << ". (Only errors block AST, symbol table, and codegen; warnings and hints are informational.)\n";
+        std::cout << "[driver] Parse, scope, type, usage, and codegen succeeded (" << programs.size()
+                      << " program(s)); warnings: "
+                      << diagnostics.warningCount() << ", hints: " << diagnostics.hintCount()
+                      << ". (Only errors block AST, symbol table, and object listing; warnings and hints are informational.)\n";
     }
 
     return kExitSuccess;
