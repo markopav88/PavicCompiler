@@ -23,12 +23,17 @@ SOURCES := \
 
 TARGET := pavicc
 
-.PHONY: all clean
+.PHONY: all clean test
 
 all: $(TARGET)
 
 $(TARGET): $(SOURCES)
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) -o $@ $(SOURCES)
+
+# Codegen regression: `3+4` via `z = 3+4`, emulator syscall (EA), epilogue BRK — byte-for-byte vs committed .expected.bin
+test: $(TARGET) tests/regression/add34.markos tests/regression/add34.expected.bin
+	./$(TARGET) -q --emulator -o /tmp/pavic_regression_add34.bin tests/regression/add34.markos
+	cmp /tmp/pavic_regression_add34.bin tests/regression/add34.expected.bin
 
 clean:
 	rm -f $(TARGET)

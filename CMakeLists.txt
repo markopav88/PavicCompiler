@@ -25,3 +25,10 @@ add_executable(pavicc
 )
 
 target_include_directories(pavicc PRIVATE src)
+
+enable_testing()
+add_test(
+    NAME regression_add34_codegen
+    COMMAND sh -c "./pavicc -q --emulator -o regression_add34.bin \"${CMAKE_SOURCE_DIR}/tests/regression/add34.markos\" && cmp regression_add34.bin \"${CMAKE_SOURCE_DIR}/tests/regression/add34.expected.bin\""
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+)
