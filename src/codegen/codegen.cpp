@@ -159,8 +159,8 @@ private:
         buffer_.emitAddr16LE(addr);
     }
 
-    /// Emits code so the low 8 bits of the result end up in **A** (subset: int literals, int vars, `+`).
-    bool emitIntExprToA(AstExpr& e) {
+    /// Substep 1: route value to **A** (assignments, arithmetic operands) or **Y** (int print syscall).
+    bool emitIntExpr(AstExpr& e, ExprTarget dest) {
         switch (e.nodeKind()) {
         case AstNodeKind::LiteralInt: {
             const auto& lit = static_cast<const AstLiteralInt&>(e);
