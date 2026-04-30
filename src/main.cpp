@@ -10,6 +10,7 @@
 #include "parser.hpp"
 #include "source.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <fstream>
@@ -25,8 +26,13 @@ constexpr int kExitSuccess = 0;
 constexpr int kExitFailure = 1;
 
 void printUsage(const char* executableName) {
-    std::cerr << "Usage: " << executableName << " [-q|--quiet] <source-file>\n";
+    std::cerr << "Usage: " << executableName
+              << " [-q|--quiet] [--emulator] [--intel-hex] [--pad=N] [-o|--output <file>] <source-file>\n";
     std::cerr << "  Verbose traces (lexer, parser, semantic, codegen) are on by default; `-q` disables them.\n";
+    std::cerr << "  `-o` writes linked object bytes after successful codegen (all type-checked programs concatenated).\n";
+    std::cerr << "  `--intel-hex` writes Intel HEX instead of raw binary (for loaders / web emulators).\n";
+    std::cerr << "  `--emulator` emits EA at syscall sites (e-tradition NOP convention) instead of FF.\n";
+    std::cerr << "  `--pad=N` pads the written object with $00 to the next multiple of N (N >= 1).\n";
 }
 
 bool readFileToString(const std::string& filePath, std::string& contents) {
@@ -41,24 +47,172 @@ bool readFileToString(const std::string& filePath, std::string& contents) {
     return true;
 }
 
-bool parseArguments(int argc, char** argv, bool& quiet, std::string& sourcePath) {
-    quiet = false;
-
-    if (argc == 2) {
-        sourcePath = argv[1];
-        return true;
+bool parsePadMultiple(const char* s, std::uint32_t& outMultiple) {
+    if (s == nullptr || s[0] == '\0') {
+        return false;
     }
+    std::uint64_t v = 0;
+    for (const char* p = s; *p != '\0'; ++p) {
+        if (*p < '0' || *p > '9') {
+            return false;
+        }
+        v = v * 10ULL + static_cast<std::uint64_t>(*p - '0');
+        if (v > 0xFFFFFFFFULL) {
+            return false;
+        }
+    }
+    if (v == 0) {
+        return false;
+    }
+    outMultiple = static_cast<std::uint32_t>(v);
+    return true;
+}
 
-    if (argc == 3) {
-        const std::string flag(argv[1]);
-        if (flag == "-q" || flag == "--quiet") {
+bool parseArguments(
+    int argc,
+    char** argv,
+    bool& quiet,
+    std::string& sourcePath,
+    std::string& outputPath,
+    bool& intelHex,
+    bool& emulator,
+    std::uint32_t& padMultiple
+) {
+    quiet = false;
+    outputPath.clear();
+    intelHex = false;
+    emulator = false;
+    padMultiple = 0;
+    sourcePath.clear();
+
+    for (int i = 1; i < argc; ++i) {
+        const std::string a(argv[i]);
+        if (a == "-q" || a == "--quiet") {
             quiet = true;
-            sourcePath = argv[2];
-            return true;
+        } else if (a == "-o" || a == "--output") {
+            if (i + 1 >= argc) {
+                return false;
+            }
+            outputPath = argv[++i];
+        } else if (a == "--intel-hex" || a == "--ihex") {
+            intelHex = true;
+        } else if (a == "--emulator" || a == "--ea-sys") {
+            emulator = true;
+        } else if (a.rfind("--pad=", 0) == 0) {
+            if (!parsePadMultiple(a.c_str() + 6, padMultiple)) {
+                return false;
+            }
+        } else if (a[0] == '-') {
+            return false;
+        } else if (!sourcePath.empty()) {
+            return false;
+        } else {
+            sourcePath = a;
         }
     }
 
-    return false;
+    return !sourcePath.empty();
+}
+
+/// Sum of all decoded bytes in one Intel HEX record (length, addr hi/lo, type, data) must be 0 mod 256.
+std::uint8_t intelHexRecordChecksum(std::uint8_t byteCount, std::uint16_t addr, std::uint8_t recordType, const std::uint8_t* data) {
+    unsigned sum = byteCount;
+    sum += (addr >> 8) & 0xFF;
+    sum += addr & 0xFF;
+    sum += recordType;
+    for (std::uint8_t i = 0; i < byteCount; ++i) {
+        sum += data[i];
+    }
+    return static_cast<std::uint8_t>((256U - (sum & 0xFFU)) & 0xFFU);
+}
+
+bool writeIntelHexFile(
+    const std::string& path,
+    std::uint16_t loadAddress,
+    const std::vector<std::uint8_t>& bytes,
+    pavic::DiagnosticBag& diagnostics
+) {
+    std::ofstream out(path, std::ios::binary);
+    if (!out) {
+        diagnostics.addError(
+            "unable to open output file for Intel HEX",
+            {1, 1},
+            "Check the `-o` path and permissions."
+        );
+        return false;
+    }
+
+    constexpr std::size_t kChunk = 16;
+    std::uint32_t addr = loadAddress;
+    for (std::size_t offset = 0; offset < bytes.size(); offset += kChunk) {
+        const std::uint8_t n = static_cast<std::uint8_t>(std::min(kChunk, bytes.size() - offset));
+        const std::uint16_t addr16 = static_cast<std::uint16_t>(addr & 0xFFFFU);
+        const std::uint8_t* chunk = bytes.data() + offset;
+        const std::uint8_t cs = intelHexRecordChecksum(n, addr16, 0x00, chunk);
+
+        char lineStart[16];
+        std::snprintf(lineStart, sizeof(lineStart), ":%02X%04X00", static_cast<unsigned>(n), static_cast<unsigned>(addr16));
+        out << lineStart;
+        for (std::uint8_t j = 0; j < n; ++j) {
+            char b[4];
+            std::snprintf(b, sizeof(b), "%02X", static_cast<unsigned>(chunk[j]));
+            out << b;
+        }
+        char tail[4];
+        std::snprintf(tail, sizeof(tail), "%02X\n", static_cast<unsigned>(cs));
+        out << tail;
+        addr += n;
+    }
+
+    // EOF record
+    out << ":00000001FF\n";
+    if (!out) {
+        diagnostics.addError(
+            "unable to write complete Intel HEX file",
+            {1, 1},
+            "The output path may be on a full disk or a device error may have occurred."
+        );
+        return false;
+    }
+    return true;
+}
+
+bool writeBinaryObjectFile(
+    const std::string& path,
+    const std::vector<std::uint8_t>& bytes,
+    pavic::DiagnosticBag& diagnostics
+) {
+    std::ofstream out(path, std::ios::binary);
+    if (!out) {
+        diagnostics.addError(
+            "unable to open output file for object bytes",
+            {1, 1},
+            "Check the `-o` path and permissions."
+        );
+        return false;
+    }
+    out.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    if (!out) {
+        diagnostics.addError(
+            "unable to write complete object file",
+            {1, 1},
+            "The output path may be on a full disk or a device error may have occurred."
+        );
+        return false;
+    }
+    return true;
+}
+
+void applyPadding(std::vector<std::uint8_t>& bytes, std::uint32_t padMultiple) {
+    if (padMultiple == 0 || bytes.empty()) {
+        return;
+    }
+    const std::size_t rem = bytes.size() % static_cast<std::size_t>(padMultiple);
+    if (rem == 0) {
+        return;
+    }
+    const std::size_t add = static_cast<std::size_t>(padMultiple) - rem;
+    bytes.insert(bytes.end(), add, 0x00);
 }
 
 } // namespace
@@ -66,8 +220,12 @@ bool parseArguments(int argc, char** argv, bool& quiet, std::string& sourcePath)
 int main(int argc, char** argv) {
     bool quiet = false;
     std::string sourcePath;
+    std::string outputPath;
+    bool intelHex = false;
+    bool emulator = false;
+    std::uint32_t padMultiple = 0;
 
-    if (!parseArguments(argc, argv, quiet, sourcePath)) {
+    if (!parseArguments(argc, argv, quiet, sourcePath, outputPath, intelHex, emulator, padMultiple)) {
         printUsage(argv[0]);
         return kExitFailure;
     }
@@ -188,7 +346,11 @@ int main(int argc, char** argv) {
 
     const std::size_t errorsAfterUsage = diagnostics.errorCount();
 
-    const pavic::codegen::CodeGenTarget codegenTarget{};
+    pavic::codegen::CodeGenTarget codegenTarget{};
+    if (emulator) {
+        codegenTarget.sysEncoding = pavic::codegen::SysCallEncoding::EmulatorNopEA;
+    }
+
     std::vector<std::vector<std::uint8_t>> objectCodePerProgram;
     objectCodePerProgram.resize(astPrograms.size());
     for (std::size_t i = 0; i < astPrograms.size(); ++i) {
@@ -203,6 +365,34 @@ int main(int argc, char** argv) {
                 !quiet,
                 objectCodePerProgram[i]
             );
+        }
+    }
+
+    std::vector<std::uint8_t> linkedObject;
+    if (!outputPath.empty() && diagnostics.errorCount() == errorsBeforeSemantic) {
+        for (std::size_t i = 0; i < objectCodePerProgram.size(); ++i) {
+            const auto& chunk = objectCodePerProgram[i];
+            if (!chunk.empty()) {
+                linkedObject.insert(linkedObject.end(), chunk.begin(), chunk.end());
+            }
+        }
+        applyPadding(linkedObject, padMultiple);
+        const std::uint16_t loadBase = codegenTarget.ramBase;
+        if (intelHex) {
+            writeIntelHexFile(outputPath, loadBase, linkedObject, diagnostics);
+        } else {
+            writeBinaryObjectFile(outputPath, linkedObject, diagnostics);
+        }
+        if (!quiet && diagnostics.errorCount() == errorsBeforeSemantic) {
+            std::cout << "[driver] Wrote object file `" << outputPath << "` (" << linkedObject.size() << " byte(s), load base $";
+            char baseBuf[8];
+            std::snprintf(baseBuf, sizeof(baseBuf), "%04X", static_cast<unsigned>(loadBase));
+            std::cout << baseBuf;
+            std::cout << (intelHex ? ", Intel HEX" : ", raw binary");
+            if (padMultiple != 0) {
+                std::cout << ", padded with $00 to a multiple of " << padMultiple;
+            }
+            std::cout << ").\n";
         }
     }
 

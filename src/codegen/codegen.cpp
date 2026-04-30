@@ -242,7 +242,6 @@ private:
         const std::size_t bneOpcode = buffer_.size();
         buffer_.emitU8(kOpBne);
         buffer_.emitU8(0x00);
-        const std::size_t jmpExitOpcode = buffer_.size();
         buffer_.emitU8(kOpJmpAbs);
         const std::size_t jmpExitAddrOperand = buffer_.size();
         buffer_.emitAddr16LE(0x0000);
@@ -251,7 +250,6 @@ private:
         codegenTrace(verbose_, map_, tokens_, w.span(), "While: L_body at PC " + std::to_string(lBody));
         visitBlock(*w.body());
         codegenTrace(verbose_, map_, tokens_, w.span(), "While: JMP abs back to L_top");
-        const std::size_t jmpTopOpcode = buffer_.size();
         buffer_.emitU8(kOpJmpAbs);
         const std::size_t jmpTopAddrOperand = buffer_.size();
         buffer_.emitAddr16LE(0x0000);
@@ -448,12 +446,10 @@ private:
         if (op == AstBinaryBoolExpr::Op::Equal) {
             const std::size_t beqOpcode = buffer_.size();
             buffer_.emitU8(kOpBeq);
-            const std::size_t beqOperand = buffer_.size();
             buffer_.emitU8(0x00);
             codegenTrace(verbose_, map_, tokens_, b.span(), "emit compare `==`: BEQ → true branch");
             buffer_.emitU8(kOpLdaImm);
             buffer_.emitU8(0x00);
-            const std::size_t jmpOpcode = buffer_.size();
             buffer_.emitU8(kOpJmpAbs);
             const std::size_t jmpAddrOperand = buffer_.size();
             buffer_.emitAddr16LE(0x0000);
@@ -468,12 +464,10 @@ private:
 
         const std::size_t bneOpcode = buffer_.size();
         buffer_.emitU8(kOpBne);
-        const std::size_t bneOperand = buffer_.size();
         buffer_.emitU8(0x00);
         codegenTrace(verbose_, map_, tokens_, b.span(), "emit compare `!=`: BNE → true branch");
         buffer_.emitU8(kOpLdaImm);
         buffer_.emitU8(0x00);
-        const std::size_t jmpOpcodeNe = buffer_.size();
         buffer_.emitU8(kOpJmpAbs);
         const std::size_t jmpAddrOperandNe = buffer_.size();
         buffer_.emitAddr16LE(0x0000);
