@@ -13,6 +13,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 namespace pavic {
 
@@ -131,18 +132,10 @@ private:
             visitVarDecl(static_cast<AstVarDeclStatement&>(st));
             return;
         case AstNodeKind::WhileStatement:
-            codegenError(
-                st.span(),
-                "codegen: `while` is not implemented yet for 6502 output",
-                "Use straight-line code for now, or extend the code generator with branches."
-            );
+            visitWhileStatement(static_cast<AstWhileStatement&>(st));
             return;
         case AstNodeKind::IfStatement:
-            codegenError(
-                st.span(),
-                "codegen: `if` is not implemented yet for 6502 output",
-                "Use straight-line code for now, or extend the code generator with branches."
-            );
+            visitIfStatement(static_cast<AstIfStatement&>(st));
             return;
         case AstNodeKind::BlockStatement:
             visitBlock(*static_cast<AstBlockStatement&>(st).block());
@@ -159,10 +152,20 @@ private:
     }
 
     void visitPrint(AstPrintStatement& st) {
-        codegenTrace(verbose_, map_, tokens_, st.span(), "PrintStatement (emit int expr → Y for syscall #1)");
-        if (!emitIntExpr(*st.expr(), ExprTarget::RegisterY)) {
+        AstExpr* expr = st.expr();
+        if (expr->nodeKind() == AstNodeKind::LiteralString) {
+            emitPrintStringLiteral(static_cast<AstLiteralString&>(*expr), st.span());
             return;
         }
+
+        codegenTrace(verbose_, map_, tokens_, st.span(), "PrintStatement (int: expr → Y, syscall #1)");
+        if (!emitIntExpr(*expr, ExprTarget::RegisterY)) {
+            return;
+        }
+        emitSysCallIntPrint();
+    }
+
+    void emitSysCallIntPrint() {
         buffer_.emitU8(kOpLdxImm);
         buffer_.emitU8(0x01);
         if (target_.sysEncoding == codegen::SysCallEncoding::EmulatorNopEA) {
@@ -170,6 +173,109 @@ private:
         } else {
             buffer_.emitU8(kOpSys);
         }
+    }
+
+    void emitSysCallStringPrint() {
+        buffer_.emitU8(kOpLdxImm);
+        buffer_.emitU8(0x02);
+        if (target_.sysEncoding == codegen::SysCallEncoding::EmulatorNopEA) {
+            buffer_.emitU8(kOpNop);
+        } else {
+            buffer_.emitU8(kOpSys);
+        }
+    }
+
+    /// String literal: emit `LDA #byte` / `STA abs` for each character + trailing `$00`, then syscall `#02`
+    /// with **Y = low 8 bits of base** (assumes high byte is `$00`; fails if `base >= 256`).
+    void emitPrintStringLiteral(AstLiteralString& lit, AstSpan printSpan) {
+        const std::string& lex = lit.lexeme();
+        const std::size_t n = lex.size() + 1;
+        if (n > 0xFFFF) {
+            codegenError(printSpan, "codegen: string literal is too long", "Shorten the string literal.");
+            return;
+        }
+        const std::uint16_t base = layout_.allocateAnonymous(n);
+        if (base >= 256) {
+            codegenError(
+                printSpan,
+                "codegen: string literal would reside at address >= $0100; this emitter only supports `LDY #imm` low-byte pointers for syscall #2",
+                "Use a smaller program (fewer variables/temporaries) so the string pool stays in zero page ($00–$FF), or extend the generator with a 16-bit pointer convention."
+            );
+            return;
+        }
+        codegenTrace(
+            verbose_,
+            map_,
+            tokens_,
+            lit.span(),
+            "PrintStatement (string: emit RAM init at $" + hexAddr(base) + " then syscall #2)"
+        );
+        for (std::size_t i = 0; i < lex.size(); ++i) {
+            buffer_.emitU8(kOpLdaImm);
+            buffer_.emitU8(static_cast<std::uint8_t>(static_cast<unsigned char>(lex[i])));
+            buffer_.emitU8(kOpStaAbs);
+            buffer_.emitAddr16LE(static_cast<std::uint16_t>(base + static_cast<std::uint16_t>(i)));
+        }
+        buffer_.emitU8(kOpLdaImm);
+        buffer_.emitU8(0x00);
+        buffer_.emitU8(kOpStaAbs);
+        buffer_.emitAddr16LE(static_cast<std::uint16_t>(base + static_cast<std::uint16_t>(lex.size())));
+
+        buffer_.emitU8(kOpLdyImm);
+        buffer_.emitU8(static_cast<std::uint8_t>(base & 0xFF));
+        emitSysCallStringPrint();
+    }
+
+    void visitWhileStatement(AstWhileStatement& w) {
+        const SourceLocation errLoc = locationAtSpan(map_, tokens_, w.span());
+        const std::size_t lTop = buffer_.size();
+        codegenTrace(
+            verbose_,
+            map_,
+            tokens_,
+            w.span(),
+            "While: L_top at PC " + std::to_string(lTop) + " (emit condition → A as 0/1)"
+        );
+        if (!emitBooleanExprAsIntInA(*w.condition())) {
+            return;
+        }
+        const std::size_t bneOpcode = buffer_.size();
+        buffer_.emitU8(kOpBne);
+        buffer_.emitU8(0x00);
+        const std::size_t jmpExitOpcode = buffer_.size();
+        buffer_.emitU8(kOpJmpAbs);
+        const std::size_t jmpExitAddrOperand = buffer_.size();
+        buffer_.emitAddr16LE(0x0000);
+        const std::size_t lBody = buffer_.size();
+        patchBranchRel8(buffer_, bneOpcode, lBody, diagnostics_, errLoc);
+        codegenTrace(verbose_, map_, tokens_, w.span(), "While: L_body at PC " + std::to_string(lBody));
+        visitBlock(*w.body());
+        codegenTrace(verbose_, map_, tokens_, w.span(), "While: JMP abs back to L_top");
+        const std::size_t jmpTopOpcode = buffer_.size();
+        buffer_.emitU8(kOpJmpAbs);
+        const std::size_t jmpTopAddrOperand = buffer_.size();
+        buffer_.emitAddr16LE(0x0000);
+        buffer_.patchAddr16LE(jmpTopAddrOperand, static_cast<std::uint16_t>(lTop));
+        const std::size_t lExit = buffer_.size();
+        buffer_.patchAddr16LE(jmpExitAddrOperand, static_cast<std::uint16_t>(lExit));
+        codegenTrace(verbose_, map_, tokens_, w.span(), "While: L_exit at PC " + std::to_string(lExit));
+    }
+
+    void visitIfStatement(AstIfStatement& i) {
+        const SourceLocation errLoc = locationAtSpan(map_, tokens_, i.span());
+        codegenTrace(verbose_, map_, tokens_, i.span(), "If: emit condition → A as 0/1; BEQ will skip body when false");
+        if (!emitBooleanExprAsIntInA(*i.condition())) {
+            return;
+        }
+        const std::size_t beqOpcode = buffer_.size();
+        buffer_.emitU8(kOpBeq);
+        buffer_.emitU8(0x00);
+        const std::size_t lBody = buffer_.size();
+        codegenTrace(verbose_, map_, tokens_, i.span(), "If: L_body at PC " + std::to_string(lBody));
+        visitBlock(*i.body());
+        const std::size_t lSkip = buffer_.size();
+        patchBranchRel8(buffer_, beqOpcode, lSkip, diagnostics_, errLoc);
+        codegenTrace(verbose_, map_, tokens_, i.span(), "If: L_skip at PC " + std::to_string(lSkip));
     }
 
     void visitAssign(AstAssignStatement& st) {
@@ -273,13 +379,20 @@ private:
         case AstNodeKind::LiteralString:
             codegenError(
                 e.span(),
-                "codegen: string expressions are not implemented yet",
-                "Only `int` expressions are lowered for this milestone."
+                "codegen: string literal here is not supported (only `print(\"...\")` is lowered for strings)",
+                "Move the string literal into a `print(...)` argument, or extend assignment/string variables."
             );
             return false;
-        case AstNodeKind::LiteralBool:
-            codegenError(e.span(), "codegen: boolean literals are not implemented yet", "Use `int` comparisons or extend the generator.");
-            return false;
+        case AstNodeKind::LiteralBool: {
+            const bool v = static_cast<const AstLiteralBool&>(e).value();
+            codegenTrace(verbose_, map_, tokens_, e.span(), std::string("emit LiteralBool → ") + (dest == ExprTarget::Accumulator ? "A" : "Y") + " (" + (v ? "true" : "false") + ")");
+            buffer_.emitU8(kOpLdaImm);
+            buffer_.emitU8(static_cast<std::uint8_t>(v ? 1 : 0));
+            if (dest == ExprTarget::RegisterY) {
+                buffer_.emitU8(kOpTay);
+            }
+            return true;
+        }
         default:
             break;
         }
