@@ -193,17 +193,27 @@ private:
         }
         case AstNodeKind::AddExpr: {
             auto& a = static_cast<AstAddExpr&>(e);
-            if (!emitIntExprToA(*a.left())) {
+            // Substep 2: fresh scratch per `+` so nested adds do not clobber the same cell.
+            const std::uint16_t scratch = layout_.allocateAnonymous(1);
+            codegenTrace(verbose_, map_, tokens_, e.span(), "emit AddExpr: evaluate left → A, STA temp $" + hexAddr(scratch));
+            if (!emitIntExpr(*a.left(), ExprTarget::Accumulator)) {
                 return false;
             }
             buffer_.emitU8(kOpStaAbs);
-            buffer_.emitAddr16LE(scratchAddr_);
-            if (!emitIntExprToA(*a.right())) {
+            buffer_.emitAddr16LE(scratch);
+            codegenTrace(verbose_, map_, tokens_, e.span(), "emit AddExpr: evaluate right → A");
+            if (!emitIntExpr(*a.right(), ExprTarget::Accumulator)) {
                 return false;
             }
+            codegenTrace(verbose_, map_, tokens_, e.span(), "emit AddExpr: CLC then ADC temp (8-bit add)");
             buffer_.emitU8(kOpClc);
             buffer_.emitU8(kOpAdcAbs);
-            buffer_.emitAddr16LE(scratchAddr_);
+            buffer_.emitAddr16LE(scratch);
+            if (dest == ExprTarget::RegisterY) {
+                codegenTrace(verbose_, map_, tokens_, e.span(), "emit AddExpr: TAY (result needed in Y)");
+                buffer_.emitU8(kOpTay);
+            }
+            return true;
             return true;
         }
         case AstNodeKind::LiteralString:
