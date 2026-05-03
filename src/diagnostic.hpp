@@ -1,10 +1,21 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <vector>
 
 namespace pavic {
+
+class SourceMap;
+
+/// Byte-oriented edit applied as: delete the half-open range [startByte, endByte), then insert `newText` at that position.
+/// For insertion only, use startByte == endByte (empty removal range). Indices are 0-based offsets into the UTF-8 source bytes.
+struct SourceRewrite {
+    std::size_t startByte = 0;
+    std::size_t endByte = 0;
+    std::string newText;
+};
 
 enum class DiagnosticKind {
     Error,
@@ -23,12 +34,24 @@ struct Diagnostic {
     std::string message;
     SourceLocation location{};
     std::string hint;
+    /// Optional lexer/parser rewrite that preserves meaning when applied (see course “fix-it” milestone).
+    std::optional<SourceRewrite> suggestedFix;
 };
 
 class DiagnosticBag {
 public:
-    void addError(std::string message, SourceLocation location, std::string hint = "");
-    void addWarning(std::string message, SourceLocation location, std::string hint = "");
+    void addError(
+        std::string message,
+        SourceLocation location,
+        std::string hint = "",
+        std::optional<SourceRewrite> suggestedFix = std::nullopt
+    );
+    void addWarning(
+        std::string message,
+        SourceLocation location,
+        std::string hint = "",
+        std::optional<SourceRewrite> suggestedFix = std::nullopt
+    );
     void addHint(std::string message, SourceLocation location, std::string detail = "");
 
     bool hasErrors() const;
@@ -42,6 +65,10 @@ private:
     std::vector<Diagnostic> diagnostics_;
 };
 
-std::string formatDiagnostic(const std::string& filePath, const Diagnostic& diagnostic);
+std::string formatDiagnostic(
+    const std::string& filePath,
+    const Diagnostic& diagnostic,
+    const SourceMap* sourceMap = nullptr
+);
 
 } // namespace pavic

@@ -254,7 +254,7 @@ int main(int argc, char** argv) {
     lexer.lexAll(tokens);
 
     for (const auto& diagnostic : diagnostics.all()) {
-        std::cerr << pavic::formatDiagnostic(sourcePath, diagnostic) << "\n";
+        std::cerr << pavic::formatDiagnostic(sourcePath, diagnostic, &sourceMap) << "\n";
     }
 
     if (diagnostics.errorCount() > 0) {
@@ -272,7 +272,7 @@ int main(int argc, char** argv) {
     std::vector<std::unique_ptr<pavic::CstProgram>> programs = parser.parseTranslationUnit();
 
     for (const auto& diagnostic : diagnostics.all()) {
-        std::cerr << pavic::formatDiagnostic(sourcePath, diagnostic) << "\n";
+        std::cerr << pavic::formatDiagnostic(sourcePath, diagnostic, &sourceMap) << "\n";
     }
 
     if (diagnostics.errorCount() > 0) {
@@ -397,7 +397,7 @@ int main(int argc, char** argv) {
     }
 
     for (const auto& diagnostic : diagnostics.all()) {
-        std::cerr << pavic::formatDiagnostic(sourcePath, diagnostic) << "\n";
+        std::cerr << pavic::formatDiagnostic(sourcePath, diagnostic, &sourceMap) << "\n";
     }
 
     if (diagnostics.errorCount() > errorsBeforeSemantic) {

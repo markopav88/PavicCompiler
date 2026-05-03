@@ -215,10 +215,12 @@ void Lexer::lexWord(std::vector<Token>& tokens) {
 
 void Lexer::warnTrailingEop() {
     if (currentProgramHasContent_) {
+        const std::size_t eofByte = text_.size();
         diagnostics_.addWarning(
             "input does not end with `$` (end-of-program marker)",
-            map_.locationAt(pos_),
-            "The grammar requires each program to end with `$`. Append `$` after the final program before EOF."
+            map_.locationAt(eofByte),
+            "The grammar requires each program to end with `$`. Append `$` after the final program before EOF.",
+            SourceRewrite{eofByte, eofByte, std::string("$")}
         );
     }
 }
