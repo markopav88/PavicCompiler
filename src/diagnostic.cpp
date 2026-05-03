@@ -2,6 +2,7 @@
 
 #include "source.hpp"
 
+#include <algorithm>
 #include <cstdio>
 #include <sstream>
 #include <string_view>
@@ -151,6 +152,103 @@ bool DiagnosticBag::empty() const {
 
 const std::vector<Diagnostic>& DiagnosticBag::all() const {
     return diagnostics_;
+}
+
+void DiagnosticBag::clear() {
+    diagnostics_.clear();
+}
+
+std::vector<SourceRewrite> collectSuggestedFixes(const DiagnosticBag& bag) {
+    std::vector<SourceRewrite> out;
+    for (const Diagnostic& d : bag.all()) {
+        if (d.kind != DiagnosticKind::Error && d.kind != DiagnosticKind::Warning) {
+            continue;
+        }
+        if (d.suggestedFix.has_value()) {
+            out.push_back(*d.suggestedFix);
+        }
+    }
+    return out;
+}
+
+bool applySourceRewritesToString(std::string& text, std::vector<SourceRewrite> fixes, std::string* errorMessage) {
+    const std::string orig = text;
+    const std::size_t n = orig.size();
+
+    for (const SourceRewrite& f : fixes) {
+        if (f.startByte > n || f.endByte > n || f.startByte > f.endByte) {
+            if (errorMessage != nullptr) {
+                *errorMessage = "source rewrite range is out of bounds for the current source buffer";
+            }
+            return false;
+        }
+    }
+
+    if (fixes.empty()) {
+        return true;
+    }
+
+    std::sort(
+        fixes.begin(),
+        fixes.end(),
+        [](const SourceRewrite& a, const SourceRewrite& b) {
+            if (a.startByte != b.startByte) {
+                return a.startByte < b.startByte;
+            }
+            if (a.endByte != b.endByte) {
+                return a.endByte < b.endByte;
+            }
+            return a.newText < b.newText;
+        }
+    );
+
+    // Merge pure insertions at the same offset into one rewrite (preserve order).
+    std::vector<SourceRewrite> merged;
+    for (const SourceRewrite& f : fixes) {
+        if (!merged.empty()) {
+            SourceRewrite& back = merged.back();
+            if (back.startByte == f.startByte && back.endByte == f.endByte && back.startByte == back.endByte && f.startByte == f.endByte) {
+                back.newText += f.newText;
+                continue;
+            }
+        }
+        merged.push_back(f);
+    }
+
+    // Reject overlaps in original coordinates: a zero-length insert at `s` reserves byte position `s`
+    // (no other rewrite may start before `s + 1`). Deletions use the usual half-open [start, end).
+    std::size_t guard = 0;
+    for (const SourceRewrite& f : merged) {
+        if (f.startByte < guard) {
+            if (errorMessage != nullptr) {
+                *errorMessage = "overlapping source rewrites; apply fixes one at a time or resolve manually";
+            }
+            return false;
+        }
+        if (f.startByte == f.endByte) {
+            guard = std::max(guard, f.startByte + 1);
+        } else {
+            guard = std::max(guard, f.endByte);
+        }
+    }
+
+    std::string out;
+    out.reserve(orig.size() + merged.size() * 4);
+    std::size_t cur = 0;
+    for (const SourceRewrite& f : merged) {
+        if (f.startByte < cur) {
+            if (errorMessage != nullptr) {
+                *errorMessage = "inconsistent rewrite ordering";
+            }
+            return false;
+        }
+        out.append(orig, cur, f.startByte - cur);
+        out += f.newText;
+        cur = f.endByte;
+    }
+    out.append(orig, cur, std::string::npos);
+    text = std::move(out);
+    return true;
 }
 
 std::string formatDiagnostic(const std::string& filePath, const Diagnostic& diagnostic, const SourceMap* sourceMap) {

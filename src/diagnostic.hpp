@@ -61,6 +61,9 @@ public:
     bool empty() const;
     const std::vector<Diagnostic>& all() const;
 
+    /// Clears all diagnostics (used by `--fix` between re-lex / re-parse attempts).
+    void clear();
+
 private:
     std::vector<Diagnostic> diagnostics_;
 };
@@ -70,5 +73,13 @@ std::string formatDiagnostic(
     const Diagnostic& diagnostic,
     const SourceMap* sourceMap = nullptr
 );
+
+/// Collects `suggestedFix` rewrites from errors and warnings (hints are skipped).
+std::vector<SourceRewrite> collectSuggestedFixes(const DiagnosticBag& bag);
+
+/// Applies non-overlapping rewrites to `text` in one pass (offsets refer to `text` before this call).
+/// Pure insertions at the same byte offset are merged in diagnostic order.
+/// Returns false if ranges are invalid or rewrites overlap.
+bool applySourceRewritesToString(std::string& text, std::vector<SourceRewrite> fixes, std::string* errorMessage);
 
 } // namespace pavic
