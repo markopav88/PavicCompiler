@@ -27,8 +27,9 @@ constexpr int kExitFailure = 1;
 
 void printUsage(const char* executableName) {
     std::cerr << "Usage: " << executableName
-              << " [-q|--quiet] [--emulator] [--intel-hex] [--pad=N] [-o|--output <file>] <source-file>\n";
+              << " [-q|--quiet] [--fix] [--emulator] [--intel-hex] [--pad=N] [-o|--output <file>] <source-file>\n";
     std::cerr << "  Verbose traces (lexer, parser, semantic, codegen) are on by default; `-q` disables them.\n";
+    std::cerr << "  `--fix` applies conservative `SourceRewrite` suggestions from lexer/parser diagnostics and re-runs lex/parse (bounded).\n";
     std::cerr << "  `-o` writes linked object bytes after successful codegen (all type-checked programs concatenated).\n";
     std::cerr << "  `--intel-hex` writes Intel HEX instead of raw binary (for loaders / web emulators).\n";
     std::cerr << "  `--emulator` emits EA at syscall sites (e-tradition NOP convention) instead of FF.\n";
@@ -72,6 +73,7 @@ bool parseArguments(
     int argc,
     char** argv,
     bool& quiet,
+    bool& applySuggestedFixes,
     std::string& sourcePath,
     std::string& outputPath,
     bool& intelHex,
@@ -79,6 +81,7 @@ bool parseArguments(
     std::uint32_t& padMultiple
 ) {
     quiet = false;
+    applySuggestedFixes = false;
     outputPath.clear();
     intelHex = false;
     emulator = false;
@@ -89,6 +92,8 @@ bool parseArguments(
         const std::string a(argv[i]);
         if (a == "-q" || a == "--quiet") {
             quiet = true;
+        } else if (a == "--fix") {
+            applySuggestedFixes = true;
         } else if (a == "-o" || a == "--output") {
             if (i + 1 >= argc) {
                 return false;
@@ -218,14 +223,16 @@ void applyPadding(std::vector<std::uint8_t>& bytes, std::uint32_t padMultiple) {
 } // namespace
 
 int main(int argc, char** argv) {
+    constexpr int kMaxFixPasses = 32;
     bool quiet = false;
+    bool applySuggestedFixes = false;
     std::string sourcePath;
     std::string outputPath;
     bool intelHex = false;
     bool emulator = false;
     std::uint32_t padMultiple = 0;
 
-    if (!parseArguments(argc, argv, quiet, sourcePath, outputPath, intelHex, emulator, padMultiple)) {
+    if (!parseArguments(argc, argv, quiet, applySuggestedFixes, sourcePath, outputPath, intelHex, emulator, padMultiple)) {
         printUsage(argv[0]);
         return kExitFailure;
     }
@@ -248,40 +255,105 @@ int main(int argc, char** argv) {
         return kExitFailure;
     }
 
-    const pavic::SourceMap sourceMap(sourceText);
     std::vector<pavic::Token> tokens;
-    pavic::Lexer lexer(sourceMap, diagnostics, !quiet);
-    lexer.lexAll(tokens);
+    std::vector<std::unique_ptr<pavic::CstProgram>> programs;
+    bool parseSucceeded = false;
 
-    for (const auto& diagnostic : diagnostics.all()) {
-        std::cerr << pavic::formatDiagnostic(sourcePath, diagnostic, &sourceMap) << "\n";
+    for (int fixPass = 0; fixPass < kMaxFixPasses; ++fixPass) {
+        diagnostics.clear();
+        const pavic::SourceMap sourceMap(sourceText);
+        tokens.clear();
+        pavic::Lexer lexer(sourceMap, diagnostics, !quiet);
+        lexer.lexAll(tokens);
+
+        for (const auto& diagnostic : diagnostics.all()) {
+            std::cerr << pavic::formatDiagnostic(sourcePath, diagnostic, &sourceMap) << "\n";
+        }
+
+        if (diagnostics.errorCount() > 0) {
+            if (applySuggestedFixes) {
+                std::vector<pavic::SourceRewrite> fixes = pavic::collectSuggestedFixes(diagnostics);
+                if (!fixes.empty()) {
+                    std::string fixErr;
+                    if (pavic::applySourceRewritesToString(sourceText, std::move(fixes), &fixErr)) {
+                        if (!quiet) {
+                            std::cout << "[driver] --fix: applied rewrite(s) after lex errors; restarting (attempt "
+                                      << (fixPass + 1) << ").\n";
+                        }
+                        continue;
+                    }
+                    if (!quiet) {
+                        std::cout << "[driver] --fix: could not apply rewrite(s): " << fixErr << "\n";
+                    }
+                }
+            }
+            if (!quiet) {
+                std::cout << "[driver] Lex failed with " << diagnostics.errorCount() << " error(s), "
+                          << diagnostics.warningCount() << " warning(s), " << diagnostics.hintCount()
+                          << " hint(s); parser step is skipped.\n";
+            }
+            return kExitFailure;
+        }
+
+        if (applySuggestedFixes) {
+            std::vector<pavic::SourceRewrite> fixes = pavic::collectSuggestedFixes(diagnostics);
+            if (!fixes.empty()) {
+                std::string fixErr;
+                if (pavic::applySourceRewritesToString(sourceText, std::move(fixes), &fixErr)) {
+                    if (!quiet) {
+                        std::cout << "[driver] --fix: applied rewrite(s) after successful lex; restarting (attempt "
+                                  << (fixPass + 1) << ").\n";
+                    }
+                    continue;
+                }
+                if (!quiet) {
+                    std::cout << "[driver] --fix: could not apply rewrite(s): " << fixErr << "\n";
+                }
+            }
+        }
+
+        pavic::Parser parser(sourceMap, diagnostics, tokens, !quiet);
+        parser.trace("parser driver initialized (token cursor at start of stream)");
+        programs = parser.parseTranslationUnit();
+
+        for (const auto& diagnostic : diagnostics.all()) {
+            std::cerr << pavic::formatDiagnostic(sourcePath, diagnostic, &sourceMap) << "\n";
+        }
+
+        if (diagnostics.errorCount() > 0) {
+            if (applySuggestedFixes) {
+                std::vector<pavic::SourceRewrite> fixes = pavic::collectSuggestedFixes(diagnostics);
+                if (!fixes.empty()) {
+                    std::string fixErr;
+                    if (pavic::applySourceRewritesToString(sourceText, std::move(fixes), &fixErr)) {
+                        if (!quiet) {
+                            std::cout << "[driver] --fix: applied rewrite(s) after parse errors; restarting (attempt "
+                                      << (fixPass + 1) << ").\n";
+                        }
+                        continue;
+                    }
+                    if (!quiet) {
+                        std::cout << "[driver] --fix: could not apply rewrite(s): " << fixErr << "\n";
+                    }
+                }
+            }
+            if (!quiet) {
+                std::cout << "[driver] Parse failed: " << diagnostics.errorCount()
+                          << " error(s). CST was not printed.\n";
+            }
+            return kExitFailure;
+        }
+
+        parseSucceeded = true;
+        break;
     }
 
-    if (diagnostics.errorCount() > 0) {
-        if (!quiet) {
-            std::cout << "[driver] Lex failed with " << diagnostics.errorCount() << " error(s), "
-                      << diagnostics.warningCount() << " warning(s), " << diagnostics.hintCount()
-                      << " hint(s); parser step is skipped.\n";
-        }
+    if (!parseSucceeded) {
+        std::cerr << "[driver] --fix: exceeded maximum rewrite attempts (" << kMaxFixPasses << ").\n";
         return kExitFailure;
     }
 
-    pavic::Parser parser(sourceMap, diagnostics, tokens, !quiet);
-    parser.trace("parser driver initialized (token cursor at start of stream)");
-
-    std::vector<std::unique_ptr<pavic::CstProgram>> programs = parser.parseTranslationUnit();
-
-    for (const auto& diagnostic : diagnostics.all()) {
-        std::cerr << pavic::formatDiagnostic(sourcePath, diagnostic, &sourceMap) << "\n";
-    }
-
-    if (diagnostics.errorCount() > 0) {
-        if (!quiet) {
-            std::cout << "[driver] Parse failed: " << diagnostics.errorCount()
-                      << " error(s). CST was not printed.\n";
-        }
-        return kExitFailure;
-    }
+    const pavic::SourceMap sourceMap(sourceText);
 
     std::vector<std::unique_ptr<pavic::AstProgram>> astPrograms;
     astPrograms.reserve(programs.size());
