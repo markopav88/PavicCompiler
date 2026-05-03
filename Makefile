@@ -23,7 +23,7 @@ SOURCES := \
 
 TARGET := pavicc
 
-.PHONY: all clean test
+.PHONY: all clean test phase-tests
 
 all: $(TARGET)
 
@@ -34,6 +34,9 @@ $(TARGET): $(SOURCES)
 test: $(TARGET) tests/regression/add34.markos tests/regression/add34.expected.bin
 	./$(TARGET) -q --emulator -o /tmp/pavic_regression_add34.bin tests/regression/add34.markos
 	cmp /tmp/pavic_regression_add34.bin tests/regression/add34.expected.bin
+
+phase-tests: $(TARGET) tests/run_phase_tests.sh
+	./tests/run_phase_tests.sh
 
 clean:
 	rm -f $(TARGET)
