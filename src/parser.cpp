@@ -1,6 +1,7 @@
 #include "parser.hpp"
 
 #include <iostream>
+#include <optional>
 #include <sstream>
 #include <utility>
 
@@ -97,7 +98,14 @@ bool Parser::expect(TokenKind kind, const std::string& context) {
         hint << " Current lexeme is `" << current.lexeme << "`.";
     }
 
-    diagnostics_.addError(message.str(), map_.locationAt(current.offset), hint.str());
+    std::optional<SourceRewrite> fix;
+    if (kind == TokenKind::RightParen) {
+        fix.emplace(SourceRewrite{current.offset, current.offset, std::string(")")});
+    } else if (kind == TokenKind::DollarEop && current.kind == TokenKind::EndOfFile) {
+        fix.emplace(SourceRewrite{current.offset, current.offset, std::string("$")});
+    }
+
+    diagnostics_.addError(message.str(), map_.locationAt(current.offset), hint.str(), std::move(fix));
     return false;
 }
 
