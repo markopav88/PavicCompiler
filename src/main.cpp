@@ -353,18 +353,6 @@ int main(int argc, char** argv) {
         return kExitFailure;
     }
 
-    const pavic::SourceMap sourceMap(sourceText);
-
-    std::vector<std::unique_ptr<pavic::AstProgram>> astPrograms;
-    astPrograms.reserve(programs.size());
-    for (std::size_t i = 0; i < programs.size(); ++i) {
-        if (programs[i]) {
-            astPrograms.push_back(pavic::lowerCstToAst(sourceMap, tokens, *programs[i], !quiet));
-        } else {
-            astPrograms.push_back(nullptr);
-        }
-    }
-
     if (!quiet) {
         std::cout << "========== Concrete Syntax Tree ==========\n";
         for (std::size_t i = 0; i < programs.size(); ++i) {
@@ -376,6 +364,18 @@ int main(int argc, char** argv) {
             }
         }
         std::cout << "========== end CST ==========\n";
+    }
+
+    const pavic::SourceMap sourceMap(sourceText);
+
+    std::vector<std::unique_ptr<pavic::AstProgram>> astPrograms;
+    astPrograms.reserve(programs.size());
+    for (std::size_t i = 0; i < programs.size(); ++i) {
+        if (programs[i]) {
+            astPrograms.push_back(pavic::lowerCstToAst(sourceMap, tokens, *programs[i], !quiet));
+        } else {
+            astPrograms.push_back(nullptr);
+        }
     }
 
     const std::size_t errorsBeforeSemantic = diagnostics.errorCount();
