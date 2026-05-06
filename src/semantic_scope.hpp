@@ -19,7 +19,8 @@ bool runScopeCheck(
     const std::vector<Token>& tokens,
     DiagnosticBag& diagnostics,
     bool verbose,
-    std::vector<SymbolRecord>& outSymbols
+    std::vector<SymbolRecord>& outSymbols,
+    std::vector<ScopeRecord>& outScopes
 );
 
 } // namespace pavic

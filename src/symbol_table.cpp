@@ -1,12 +1,17 @@
 #include "symbol_table.hpp"
 
 #include <iomanip>
+#include <map>
 
 namespace pavic {
 
 void ScopeStack::pushScope() {
+    const std::size_t parentId = scopeIds_.empty() ? kNoParentScopeId : scopeIds_.back();
+    const std::size_t scopeDepth = scopes_.size();
     scopes_.emplace_back();
-    scopeIds_.push_back(nextScopeId_++);
+    const std::size_t id = nextScopeId_++;
+    scopeIds_.push_back(id);
+    allScopes_.push_back(ScopeRecord{id, parentId, scopeDepth});
 }
 
 void ScopeStack::popScope() {
@@ -57,6 +62,22 @@ void printSymbolTable(std::ostream& os, const std::vector<SymbolRecord>& symbols
     for (const SymbolRecord& s : symbols) {
         os << std::setw(8) << std::string(1, s.name) << std::setw(12) << s.declType << std::setw(10) << s.scopeId << std::setw(14) << s.scopeDepth
            << s.declaredAt.line << ":" << s.declaredAt.column << "\n";
+    }
+}
+
+void printScopeTree(std::ostream& os, const std::vector<ScopeRecord>& scopes) {
+    if (scopes.empty()) {
+        os << "(no scopes)\n";
+        return;
+    }
+    for (const ScopeRecord& s : scopes) {
+        if (s.scopeDepth == 0) {
+            os << "scope#" << s.scopeId << " (depth " << s.scopeDepth << ")\n";
+            continue;
+        }
+        const std::size_t indent = (s.scopeDepth - 1) * 4;
+        os << std::string(indent, ' ') << "|-- "
+           << "scope#" << s.scopeId << " (depth " << s.scopeDepth << ")\n";
     }
 }
 

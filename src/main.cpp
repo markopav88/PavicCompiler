@@ -381,16 +381,20 @@ int main(int argc, char** argv) {
     const std::size_t errorsBeforeSemantic = diagnostics.errorCount();
     std::vector<std::vector<pavic::SymbolRecord>> symbolTables;
     symbolTables.reserve(astPrograms.size());
+    std::vector<std::vector<pavic::ScopeRecord>> scopeTrees;
+    scopeTrees.reserve(astPrograms.size());
     std::vector<bool> scopeOkPerProgram;
     scopeOkPerProgram.reserve(astPrograms.size());
 
     for (std::size_t i = 0; i < astPrograms.size(); ++i) {
         std::vector<pavic::SymbolRecord> table;
+        std::vector<pavic::ScopeRecord> scopes;
         const std::size_t before = diagnostics.errorCount();
         if (astPrograms[i]) {
-            pavic::runScopeCheck(*astPrograms[i], sourceMap, tokens, diagnostics, !quiet, table);
+            pavic::runScopeCheck(*astPrograms[i], sourceMap, tokens, diagnostics, !quiet, table, scopes);
         }
         symbolTables.push_back(std::move(table));
+        scopeTrees.push_back(std::move(scopes));
         scopeOkPerProgram.push_back(astPrograms[i] && diagnostics.errorCount() == before);
     }
 
@@ -501,6 +505,9 @@ int main(int argc, char** argv) {
             if (i > 0) {
                 std::cout << "\n--- program " << (i + 1) << " ---\n";
             }
+            std::cout << "Scope tree:\n";
+            pavic::printScopeTree(std::cout, scopeTrees[i]);
+            std::cout << "Declarations:\n";
             pavic::printSymbolTable(std::cout, symbolTables[i]);
         }
         std::cout << "========== end symbol table ==========\n";

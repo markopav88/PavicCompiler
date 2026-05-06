@@ -20,6 +20,16 @@ struct SymbolRecord {
     SourceLocation declaredAt{};
 };
 
+/// One lexical scope frame created by `{ ... }`.
+struct ScopeRecord {
+    std::size_t scopeId = 0;
+    /// Parent scope id, or `kNoParentScopeId` for the outermost block scope.
+    std::size_t parentScopeId = 0;
+    std::size_t scopeDepth = 0;
+};
+
+constexpr std::size_t kNoParentScopeId = static_cast<std::size_t>(-1);
+
 /// Stack of lexical scopes (`{` … `}`). Innermost map is the current block.
 class ScopeStack {
 public:
@@ -36,6 +46,8 @@ public:
 
     /// Declarations in first-seen order (for printing the symbol table).
     const std::vector<SymbolRecord>& orderedDeclarations() const { return ordered_; }
+    /// Scope frames in creation order (for tree rendering).
+    const std::vector<ScopeRecord>& allScopes() const { return allScopes_; }
 
 private:
     std::vector<std::map<char, SymbolRecord>> scopes_;
@@ -43,8 +55,10 @@ private:
     std::vector<std::size_t> scopeIds_;
     std::size_t nextScopeId_ = 0;
     std::vector<SymbolRecord> ordered_;
+    std::vector<ScopeRecord> allScopes_;
 };
 
 void printSymbolTable(std::ostream& os, const std::vector<SymbolRecord>& symbols);
+void printScopeTree(std::ostream& os, const std::vector<ScopeRecord>& scopes);
 
 } // namespace pavic

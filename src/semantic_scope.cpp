@@ -45,6 +45,7 @@ public:
     }
 
     void takeSymbols(std::vector<SymbolRecord>& out) { out = scopes_.orderedDeclarations(); }
+    void takeScopes(std::vector<ScopeRecord>& out) { out = scopes_.allScopes(); }
 
 private:
     void visitBlock(AstBlock& block) {
@@ -208,13 +209,16 @@ bool runScopeCheck(
     const std::vector<Token>& tokens,
     DiagnosticBag& diagnostics,
     bool verbose,
-    std::vector<SymbolRecord>& outSymbols
+    std::vector<SymbolRecord>& outSymbols,
+    std::vector<ScopeRecord>& outScopes
 ) {
     outSymbols.clear();
+    outScopes.clear();
     const std::size_t errorsBefore = diagnostics.errorCount();
     ScopeChecker checker(map, tokens, diagnostics, verbose);
     checker.checkProgram(ast);
     checker.takeSymbols(outSymbols);
+    checker.takeScopes(outScopes);
     return diagnostics.errorCount() == errorsBefore;
 }
 
