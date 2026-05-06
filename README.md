@@ -55,7 +55,7 @@ g++ -std=c++17 -Wall -Wextra -pedantic -Isrc -o pavicc \
   src/semantic_scope.cpp src/semantic_type.cpp src/semantic_usage.cpp \
   src/codegen/memory_layout.cpp src/codegen/code_buffer.cpp src/codegen/codegen.cpp
 
-# Run on any source program provided by grader
+# Run on any source program provided 
 ./pavicc <source-file>
 
 # Optional modes
