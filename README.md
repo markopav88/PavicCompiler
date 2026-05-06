@@ -42,7 +42,7 @@ Or, if built with CMake:
 
 Verbose lexer trace is enabled by default.
 
-## Grader Quick Run
+## Quick Run
 
 ```bash
 # Build (recommended)
