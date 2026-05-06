@@ -25,15 +25,11 @@ constexpr std::uint8_t kOpSys = 0xFF;
 constexpr std::uint8_t kOpLdaImm = 0xA9;
 constexpr std::uint8_t kOpLdaAbs = 0xAD;
 constexpr std::uint8_t kOpStaAbs = 0x8D;
-constexpr std::uint8_t kOpAdcAbs = 0x6D;
 constexpr std::uint8_t kOpLdxImm = 0xA2;
-constexpr std::uint8_t kOpTay = 0xA8;
-constexpr std::uint8_t kOpClc = 0x18;
-constexpr std::uint8_t kOpSec = 0x38;
-constexpr std::uint8_t kOpSbcAbs = 0xED;
-constexpr std::uint8_t kOpBeq = 0xF0;
+constexpr std::uint8_t kOpLdxAbs = 0xAE;
+constexpr std::uint8_t kOpCpxAbs = 0xEC;
+constexpr std::uint8_t kOpIncAbs = 0xEE;
 constexpr std::uint8_t kOpBne = 0xD0;
-constexpr std::uint8_t kOpJmpAbs = 0x4C;
 constexpr std::uint8_t kOpLdyImm = 0xA0;
 constexpr std::uint8_t kOpLdyAbs = 0xAC;
 
@@ -54,8 +50,12 @@ void codegenTrace(bool verbose, const SourceMap& map, const std::vector<Token>& 
     if (!verbose) {
         return;
     }
-    const SourceLocation loc = locationAtSpan(map, tokens, span);
-    std::cout << "[codegen] " << loc.line << ":" << loc.column << ": " << message << "\n";
+    (void)map;
+    (void)tokens;
+    (void)span;
+    if (message == "Block" || message == "While" || message == "If" || message == "Print" || message == "Scope Up") {
+        std::cout << "CODE GEN " << message << "\n";
+    }
 }
 
 void patchBranchRel8(
@@ -95,21 +95,111 @@ public:
           verbose_(verbose),
           layout_(layout),
           target_(target),
-          buffer_(buffer) {}
+          buffer_(buffer),
+          zeroAddr_(layout_.allocateAnonymous(1)) {}
 
     void visitProgram(AstProgram& program) {
-        codegenTrace(verbose_, map_, tokens_, program.span(), "enter Program (codegen)");
+        codegenTrace(verbose_, map_, tokens_, program.span(), "Block");
+        // Reserve a stable byte that always stores 0; used for CPX-based predicates and unconditional BNE.
+        buffer_.emitU8(kOpLdaImm);
+        buffer_.emitU8(0x00);
+        buffer_.emitU8(kOpStaAbs);
+        emitDataAddr16(zeroAddr_);
         visitBlock(*program.block());
-        codegenTrace(verbose_, map_, tokens_, program.span(), "leave Program (codegen)");
+    }
+
+    bool backpatchDataToAfterCode() {
+        std::uint16_t dataBase = static_cast<std::uint16_t>(buffer_.size());
+        if (dataBase < target_.minDataBase) {
+            dataBase = target_.minDataBase;
+        }
+        if (dataBase < target_.ramBase) {
+            diagnostics_.addError(
+                "codegen: invalid data layout base for relocation",
+                {1, 1},
+                "Ensure target.ramBase <= target.minDataBase."
+            );
+            return false;
+        }
+
+        const std::uint16_t delta = static_cast<std::uint16_t>(dataBase - target_.ramBase);
+        for (const auto& fx : dataAddrFixups_) {
+            const std::uint32_t relocatedWide = static_cast<std::uint32_t>(fx.address) + delta;
+            if (relocatedWide > 0xFFFFu) {
+                diagnostics_.addError(
+                    "codegen: data relocation overflow while backpatching absolute address",
+                    {1, 1},
+                    "Program/data image exceeds 16-bit address space."
+                );
+                return false;
+            }
+            const std::uint16_t relocated = static_cast<std::uint16_t>(relocatedWide);
+            buffer_.patchAddr16LE(fx.operandOffset, relocated);
+            if (verbose_) {
+                std::cout << "CODE GEN backpatch T* @" << fx.operandOffset << " => $" << hexAddr(relocated) << "\n";
+            }
+        }
+        for (const auto& fx : dataImmLowFixups_) {
+            const std::uint32_t relocatedWide = static_cast<std::uint32_t>(fx.address) + delta;
+            if (relocatedWide > 0xFFFFu) {
+                diagnostics_.addError(
+                    "codegen: data relocation overflow while backpatching immediate pointer",
+                    {1, 1},
+                    "Program/data image exceeds 16-bit address space."
+                );
+                return false;
+            }
+            const std::uint16_t relocated = static_cast<std::uint16_t>(relocatedWide);
+            if (relocated > 0xFF) {
+                diagnostics_.addError(
+                    "codegen: relocated string pointer no longer fits in 8-bit Y immediate",
+                    {1, 1},
+                    "Program code/data exceeded zero page; use a 16-bit pointer convention for syscall #2."
+                );
+                return false;
+            }
+            buffer_.patchU8(fx.operandOffset, static_cast<std::uint8_t>(relocated & 0xFF));
+            if (verbose_) {
+                std::cout << "CODE GEN backpatch T*low @" << fx.operandOffset << " => $" << hexAddr(relocated & 0xFF) << "\n";
+            }
+        }
+        return true;
     }
 
 private:
+    struct DataAddrFixup {
+        std::size_t operandOffset = 0;
+        std::uint16_t address = 0;
+    };
+    struct DataImmLowFixup {
+        std::size_t operandOffset = 0;
+        std::uint16_t address = 0;
+    };
+
+    void emitDataAddr16(std::uint16_t addr) {
+        const std::size_t off = buffer_.size();
+        buffer_.emitAddr16LE(addr);
+        if (verbose_) {
+            std::cout << "CODE GEN placeholder T" << nextTempPlaceholderId_++ << " XX at byte " << off << "\n";
+        }
+        dataAddrFixups_.push_back(DataAddrFixup{off, addr});
+    }
+    void emitDataImmLow(std::uint16_t addr) {
+        const std::size_t off = buffer_.size();
+        buffer_.emitU8(static_cast<std::uint8_t>(addr & 0xFF));
+        if (verbose_) {
+            std::cout << "CODE GEN placeholder T" << nextTempPlaceholderId_++ << " (low) at byte " << off << "\n";
+        }
+        dataImmLowFixups_.push_back(DataImmLowFixup{off, addr});
+    }
+
     void codegenError(AstSpan span, std::string message, std::string hint) {
         diagnostics_.addError(std::move(message), locationAtSpan(map_, tokens_, span), std::move(hint));
     }
 
     void visitBlock(AstBlock& block) {
-        codegenTrace(verbose_, map_, tokens_, block.span(), "enter Block (codegen)");
+        ++blockDepth_;
+        codegenTrace(verbose_, map_, tokens_, block.span(), "Block");
         if (block.statements()) {
             for (auto& st : block.statements()->statements()) {
                 if (st) {
@@ -117,7 +207,10 @@ private:
                 }
             }
         }
-        codegenTrace(verbose_, map_, tokens_, block.span(), "leave Block (codegen)");
+        if (blockDepth_ > 1) {
+            codegenTrace(verbose_, map_, tokens_, block.span(), "Scope Up");
+        }
+        --blockDepth_;
     }
 
     void visitStatement(AstStatement& st) {
@@ -152,13 +245,12 @@ private:
     }
 
     void visitPrint(AstPrintStatement& st) {
+        codegenTrace(verbose_, map_, tokens_, st.span(), "Print");
         AstExpr* expr = st.expr();
         if (expr->nodeKind() == AstNodeKind::LiteralString) {
             emitPrintStringLiteral(static_cast<AstLiteralString&>(*expr), st.span());
             return;
         }
-
-        codegenTrace(verbose_, map_, tokens_, st.span(), "PrintStatement (int: expr → Y, syscall #1)");
         if (!emitIntExpr(*expr, ExprTarget::RegisterY)) {
             return;
         }
@@ -214,66 +306,89 @@ private:
             buffer_.emitU8(kOpLdaImm);
             buffer_.emitU8(static_cast<std::uint8_t>(static_cast<unsigned char>(lex[i])));
             buffer_.emitU8(kOpStaAbs);
-            buffer_.emitAddr16LE(static_cast<std::uint16_t>(base + static_cast<std::uint16_t>(i)));
+            emitDataAddr16(static_cast<std::uint16_t>(base + static_cast<std::uint16_t>(i)));
         }
         buffer_.emitU8(kOpLdaImm);
         buffer_.emitU8(0x00);
         buffer_.emitU8(kOpStaAbs);
-        buffer_.emitAddr16LE(static_cast<std::uint16_t>(base + static_cast<std::uint16_t>(lex.size())));
+        emitDataAddr16(static_cast<std::uint16_t>(base + static_cast<std::uint16_t>(lex.size())));
 
         buffer_.emitU8(kOpLdyImm);
-        buffer_.emitU8(static_cast<std::uint8_t>(base & 0xFF));
+        emitDataImmLow(base);
         emitSysCallStringPrint();
+    }
+
+    void emitForceZClear() {
+        buffer_.emitU8(kOpLdxImm);
+        buffer_.emitU8(0x01);
+        buffer_.emitU8(kOpCpxAbs);
+        emitDataAddr16(zeroAddr_);
+    }
+
+    void emitBranchAlwaysTo(std::size_t targetOffset, AstSpan span) {
+        emitForceZClear(); // guarantees Z=0, so the next BNE is unconditional.
+        const std::size_t bneOpcode = buffer_.size();
+        buffer_.emitU8(kOpBne);
+        buffer_.emitU8(0x00);
+        const std::size_t jumpId = nextJumpPlaceholderId_++;
+        if (verbose_) {
+            std::cout << "CODE GEN placeholder J" << jumpId << " XX at byte " << (bneOpcode + 1) << "\n";
+        }
+        patchBranchRel8(buffer_, bneOpcode, targetOffset, diagnostics_, locationAtSpan(map_, tokens_, span));
+        if (verbose_) {
+            const std::size_t nextPc = bneOpcode + 2;
+            const int delta = static_cast<int>(targetOffset) - static_cast<int>(nextPc);
+            std::cout << "CODE GEN backpatch J" << jumpId << " => " << delta << "\n";
+        }
     }
 
     void visitWhileStatement(AstWhileStatement& w) {
         const SourceLocation errLoc = locationAtSpan(map_, tokens_, w.span());
         const std::size_t lTop = buffer_.size();
-        codegenTrace(
-            verbose_,
-            map_,
-            tokens_,
-            w.span(),
-            "While: L_top at PC " + std::to_string(lTop) + " (emit condition → A as 0/1)"
-        );
-        if (!emitBooleanExprAsIntInA(*w.condition())) {
+        codegenTrace(verbose_, map_, tokens_, w.span(), "While");
+        if (!emitBooleanExprAsPredicateZ(*w.condition())) {
+            return;
+        }
+        // false (Z=0) => branch to exit.
+        const std::size_t bneOpcode = buffer_.size();
+        buffer_.emitU8(kOpBne);
+        buffer_.emitU8(0x00);
+        const std::size_t jumpId = nextJumpPlaceholderId_++;
+        if (verbose_) {
+            std::cout << "CODE GEN placeholder J" << jumpId << " XX at byte " << (bneOpcode + 1) << "\n";
+        }
+        visitBlock(*w.body());
+        emitBranchAlwaysTo(lTop, w.span());
+        const std::size_t lExit = buffer_.size();
+        patchBranchRel8(buffer_, bneOpcode, lExit, diagnostics_, errLoc);
+        if (verbose_) {
+            const std::size_t nextPc = bneOpcode + 2;
+            const int delta = static_cast<int>(lExit) - static_cast<int>(nextPc);
+            std::cout << "CODE GEN backpatch J" << jumpId << " => " << delta << "\n";
+        }
+    }
+
+    void visitIfStatement(AstIfStatement& i) {
+        const SourceLocation errLoc = locationAtSpan(map_, tokens_, i.span());
+        codegenTrace(verbose_, map_, tokens_, i.span(), "If");
+        if (!emitBooleanExprAsPredicateZ(*i.condition())) {
             return;
         }
         const std::size_t bneOpcode = buffer_.size();
         buffer_.emitU8(kOpBne);
         buffer_.emitU8(0x00);
-        buffer_.emitU8(kOpJmpAbs);
-        const std::size_t jmpExitAddrOperand = buffer_.size();
-        buffer_.emitAddr16LE(0x0000);
-        const std::size_t lBody = buffer_.size();
-        patchBranchRel8(buffer_, bneOpcode, lBody, diagnostics_, errLoc);
-        codegenTrace(verbose_, map_, tokens_, w.span(), "While: L_body at PC " + std::to_string(lBody));
-        visitBlock(*w.body());
-        codegenTrace(verbose_, map_, tokens_, w.span(), "While: JMP abs back to L_top");
-        buffer_.emitU8(kOpJmpAbs);
-        const std::size_t jmpTopAddrOperand = buffer_.size();
-        buffer_.emitAddr16LE(0x0000);
-        buffer_.patchAddr16LE(jmpTopAddrOperand, static_cast<std::uint16_t>(lTop));
-        const std::size_t lExit = buffer_.size();
-        buffer_.patchAddr16LE(jmpExitAddrOperand, static_cast<std::uint16_t>(lExit));
-        codegenTrace(verbose_, map_, tokens_, w.span(), "While: L_exit at PC " + std::to_string(lExit));
-    }
-
-    void visitIfStatement(AstIfStatement& i) {
-        const SourceLocation errLoc = locationAtSpan(map_, tokens_, i.span());
-        codegenTrace(verbose_, map_, tokens_, i.span(), "If: emit condition → A as 0/1; BEQ will skip body when false");
-        if (!emitBooleanExprAsIntInA(*i.condition())) {
-            return;
+        const std::size_t jumpId = nextJumpPlaceholderId_++;
+        if (verbose_) {
+            std::cout << "CODE GEN placeholder J" << jumpId << " XX at byte " << (bneOpcode + 1) << "\n";
         }
-        const std::size_t beqOpcode = buffer_.size();
-        buffer_.emitU8(kOpBeq);
-        buffer_.emitU8(0x00);
-        const std::size_t lBody = buffer_.size();
-        codegenTrace(verbose_, map_, tokens_, i.span(), "If: L_body at PC " + std::to_string(lBody));
         visitBlock(*i.body());
         const std::size_t lSkip = buffer_.size();
-        patchBranchRel8(buffer_, beqOpcode, lSkip, diagnostics_, errLoc);
-        codegenTrace(verbose_, map_, tokens_, i.span(), "If: L_skip at PC " + std::to_string(lSkip));
+        patchBranchRel8(buffer_, bneOpcode, lSkip, diagnostics_, errLoc);
+        if (verbose_) {
+            const std::size_t nextPc = bneOpcode + 2;
+            const int delta = static_cast<int>(lSkip) - static_cast<int>(nextPc);
+            std::cout << "CODE GEN backpatch J" << jumpId << " => " << delta << "\n";
+        }
     }
 
     void visitAssign(AstAssignStatement& st) {
@@ -288,7 +403,7 @@ private:
         const codegen::VarKey key{st.name(), st.lhsResolvedDeclScopeId()};
         const std::uint16_t addr = layout_.addressOf(key);
         buffer_.emitU8(kOpStaAbs);
-        buffer_.emitAddr16LE(addr);
+        emitDataAddr16(addr);
     }
 
     /// Substep 1: route value to **A** (assignments, arithmetic operands) or **Y** (int print syscall).
@@ -330,47 +445,98 @@ private:
             if (dest == ExprTarget::Accumulator) {
                 codegenTrace(verbose_, map_, tokens_, e.span(), "emit IdentifierExpr → A (LDA abs)");
                 buffer_.emitU8(kOpLdaAbs);
-                buffer_.emitAddr16LE(addr);
+                emitDataAddr16(addr);
             } else {
                 codegenTrace(verbose_, map_, tokens_, e.span(), "emit IdentifierExpr → Y (LDY abs)");
                 buffer_.emitU8(kOpLdyAbs);
-                buffer_.emitAddr16LE(addr);
+                emitDataAddr16(addr);
             }
             return true;
         }
         case AstNodeKind::AddExpr: {
             auto& a = static_cast<AstAddExpr&>(e);
-            // Substep 2: fresh scratch per `+` so nested adds do not clobber the same cell.
-            const std::uint16_t scratch = layout_.allocateAnonymous(1);
-            codegenTrace(verbose_, map_, tokens_, e.span(), "emit AddExpr: evaluate left → A, STA temp $" + hexAddr(scratch));
+            // Strict-opcode addition using INC/CPX/BNE loop (no CLC/TAY/JMP).
+            const std::uint16_t sumSlot = layout_.allocateAnonymous(1);
+            const std::uint16_t rightSlot = layout_.allocateAnonymous(1);
+            const std::uint16_t counterSlot = layout_.allocateAnonymous(1);
+            codegenTrace(verbose_, map_, tokens_, e.span(), "emit AddExpr: left->sum, right->limit, INC loop");
             if (!emitIntExpr(*a.left(), ExprTarget::Accumulator)) {
                 return false;
             }
             buffer_.emitU8(kOpStaAbs);
-            buffer_.emitAddr16LE(scratch);
+            emitDataAddr16(sumSlot);
             codegenTrace(verbose_, map_, tokens_, e.span(), "emit AddExpr: evaluate right → A");
             if (!emitIntExpr(*a.right(), ExprTarget::Accumulator)) {
                 return false;
             }
-            codegenTrace(verbose_, map_, tokens_, e.span(), "emit AddExpr: CLC then ADC temp (8-bit add)");
-            buffer_.emitU8(kOpClc);
-            buffer_.emitU8(kOpAdcAbs);
-            buffer_.emitAddr16LE(scratch);
+            buffer_.emitU8(kOpStaAbs);
+            emitDataAddr16(rightSlot);
+            buffer_.emitU8(kOpLdaImm);
+            buffer_.emitU8(0x00);
+            buffer_.emitU8(kOpStaAbs);
+            emitDataAddr16(counterSlot);
+            const std::size_t loopTop = buffer_.size();
+            buffer_.emitU8(kOpLdxAbs);
+            emitDataAddr16(counterSlot);
+            buffer_.emitU8(kOpCpxAbs);
+            emitDataAddr16(rightSlot); // Z=1 when counter==right => done.
+            const std::size_t bneBodyOpcode = buffer_.size();
+            buffer_.emitU8(kOpBne);
+            buffer_.emitU8(0x00); // to body
+            // equal-path (Z=1): skip body and continue at doneLabel.
+            emitForceZClear();
+            const std::size_t bneDoneOpcode = buffer_.size();
+            buffer_.emitU8(kOpBne);
+            buffer_.emitU8(0x00);
+            const std::size_t bodyLabel = buffer_.size();
+            patchBranchRel8(buffer_, bneBodyOpcode, bodyLabel, diagnostics_, locationAtSpan(map_, tokens_, e.span()));
+            buffer_.emitU8(kOpIncAbs);
+            emitDataAddr16(sumSlot);
+            buffer_.emitU8(kOpIncAbs);
+            emitDataAddr16(counterSlot);
+            emitBranchAlwaysTo(loopTop, e.span());
+            const std::size_t doneLabel = buffer_.size();
+            patchBranchRel8(buffer_, bneDoneOpcode, doneLabel, diagnostics_, locationAtSpan(map_, tokens_, e.span()));
+            buffer_.emitU8(kOpLdaAbs);
+            emitDataAddr16(sumSlot);
             if (dest == ExprTarget::RegisterY) {
-                codegenTrace(verbose_, map_, tokens_, e.span(), "emit AddExpr: TAY (result needed in Y)");
-                buffer_.emitU8(kOpTay);
+                buffer_.emitU8(kOpStaAbs);
+                emitDataAddr16(counterSlot);
+                buffer_.emitU8(kOpLdyAbs);
+                emitDataAddr16(counterSlot);
             }
             return true;
         }
         case AstNodeKind::BooleanExprWrapper: {
             auto& w = static_cast<AstBooleanExprWrapper&>(e);
-            codegenTrace(verbose_, map_, tokens_, e.span(), "emit BooleanExprWrapper: lower to 0/1 in A");
-            if (!emitBooleanExprAsIntInA(*w.inner())) {
+            codegenTrace(verbose_, map_, tokens_, e.span(), "emit BooleanExprWrapper: predicate then materialize 0/1 in A");
+            if (!emitBooleanExprAsPredicateZ(*w.inner())) {
                 return false;
             }
+            // Z=1 true, Z=0 false
+            buffer_.emitU8(kOpLdaImm);
+            buffer_.emitU8(0x01);
+            const std::size_t bneFalse = buffer_.size();
+            buffer_.emitU8(kOpBne); // false (Z=0) => branch to write 0
+            buffer_.emitU8(0x00);
+            const std::size_t truePathEnd = buffer_.size();
+            emitForceZClear();
+            const std::size_t bneSkipFalse = buffer_.size();
+            buffer_.emitU8(kOpBne);
+            buffer_.emitU8(0x00);
+            const std::size_t falseLabel = buffer_.size();
+            buffer_.emitU8(kOpLdaImm);
+            buffer_.emitU8(0x00);
+            const std::size_t doneLabel = buffer_.size();
+            patchBranchRel8(buffer_, bneFalse, falseLabel, diagnostics_, locationAtSpan(map_, tokens_, e.span()));
+            patchBranchRel8(buffer_, bneSkipFalse, doneLabel, diagnostics_, locationAtSpan(map_, tokens_, e.span()));
+            (void)truePathEnd;
             if (dest == ExprTarget::RegisterY) {
-                codegenTrace(verbose_, map_, tokens_, e.span(), "emit BooleanExprWrapper: TAY");
-                buffer_.emitU8(kOpTay);
+                const std::uint16_t boolSlot = layout_.allocateAnonymous(1);
+                buffer_.emitU8(kOpStaAbs);
+                emitDataAddr16(boolSlot);
+                buffer_.emitU8(kOpLdyAbs);
+                emitDataAddr16(boolSlot);
             }
             return true;
         }
@@ -387,7 +553,11 @@ private:
             buffer_.emitU8(kOpLdaImm);
             buffer_.emitU8(static_cast<std::uint8_t>(v ? 1 : 0));
             if (dest == ExprTarget::RegisterY) {
-                buffer_.emitU8(kOpTay);
+                const std::uint16_t tmp = layout_.allocateAnonymous(1);
+                buffer_.emitU8(kOpStaAbs);
+                emitDataAddr16(tmp);
+                buffer_.emitU8(kOpLdyAbs);
+                emitDataAddr16(tmp);
             }
             return true;
         }
@@ -398,13 +568,19 @@ private:
         return false;
     }
 
-    bool emitBooleanExprAsIntInA(AstBooleanExpr& b) {
+    bool emitBooleanExprAsPredicateZ(AstBooleanExpr& b) {
         switch (b.nodeKind()) {
         case AstNodeKind::BooleanLiteralExpr: {
             const bool v = static_cast<const AstBooleanLiteralExpr&>(b).value();
-            codegenTrace(verbose_, map_, tokens_, b.span(), std::string("emit BooleanLiteralExpr → A (") + (v ? "true" : "false") + ")");
-            buffer_.emitU8(kOpLdaImm);
-            buffer_.emitU8(static_cast<std::uint8_t>(v ? 1 : 0));
+            codegenTrace(verbose_, map_, tokens_, b.span(), std::string("emit BooleanLiteralExpr predicate (") + (v ? "true" : "false") + ")");
+            if (v) {
+                buffer_.emitU8(kOpLdxImm);
+                buffer_.emitU8(0x00);
+                buffer_.emitU8(kOpCpxAbs);
+                emitDataAddr16(zeroAddr_); // Z=1 true
+            } else {
+                emitForceZClear(); // Z=0 false
+            }
             return true;
         }
         case AstNodeKind::BinaryBoolExpr:
@@ -415,7 +591,7 @@ private:
         }
     }
 
-    /// Substep 4: int `==` / `!=` → 0/1 in A using SEC/SBC + relative branch + JMP abs patch.
+    /// int `==` / `!=` predicate using LDX/CPX/BNE, with true encoded as Z=1.
     bool emitBinaryIntCompare(AstBinaryBoolExpr& b) {
         const AstBinaryBoolExpr::Op op = b.op();
         codegenTrace(
@@ -427,56 +603,47 @@ private:
         );
 
         const std::uint16_t leftSlot = layout_.allocateAnonymous(1);
+        const std::uint16_t rightSlot = layout_.allocateAnonymous(1);
         if (!emitIntExpr(*b.left(), ExprTarget::Accumulator)) {
             return false;
         }
         buffer_.emitU8(kOpStaAbs);
-        buffer_.emitAddr16LE(leftSlot);
-        codegenTrace(verbose_, map_, tokens_, b.span(), "emit compare: right → A, SEC, SBC leftTemp");
+        emitDataAddr16(leftSlot);
+        codegenTrace(verbose_, map_, tokens_, b.span(), "emit compare: right → slot, LDX left, CPX right");
 
         if (!emitIntExpr(*b.right(), ExprTarget::Accumulator)) {
             return false;
         }
-        buffer_.emitU8(kOpSec);
-        buffer_.emitU8(kOpSbcAbs);
-        buffer_.emitAddr16LE(leftSlot);
-
-        const SourceLocation errLoc = locationAtSpan(map_, tokens_, b.span());
+        buffer_.emitU8(kOpStaAbs);
+        emitDataAddr16(rightSlot);
+        buffer_.emitU8(kOpLdxAbs);
+        emitDataAddr16(leftSlot);
+        buffer_.emitU8(kOpCpxAbs);
+        emitDataAddr16(rightSlot); // Z=1 when equal
 
         if (op == AstBinaryBoolExpr::Op::Equal) {
-            const std::size_t beqOpcode = buffer_.size();
-            buffer_.emitU8(kOpBeq);
-            buffer_.emitU8(0x00);
-            codegenTrace(verbose_, map_, tokens_, b.span(), "emit compare `==`: BEQ → true branch");
-            buffer_.emitU8(kOpLdaImm);
-            buffer_.emitU8(0x00);
-            buffer_.emitU8(kOpJmpAbs);
-            const std::size_t jmpAddrOperand = buffer_.size();
-            buffer_.emitAddr16LE(0x0000);
-            const std::size_t trueLabel = buffer_.size();
-            buffer_.emitU8(kOpLdaImm);
-            buffer_.emitU8(0x01);
-            const std::size_t skipLabel = buffer_.size();
-            patchBranchRel8(buffer_, beqOpcode, trueLabel, diagnostics_, errLoc);
-            buffer_.patchAddr16LE(jmpAddrOperand, static_cast<std::uint16_t>(skipLabel));
             return true;
         }
 
-        const std::size_t bneOpcode = buffer_.size();
+        // Invert Z for `!=`: after this, Z=1 means not equal.
+        const std::size_t bneNotEq = buffer_.size();
+        buffer_.emitU8(kOpBne);
+        buffer_.emitU8(0x00); // branch when original Z=0 (not equal)
+        // equal path => force Z=0
+        emitForceZClear();
+        const std::size_t bneSkipNotEq = buffer_.size();
         buffer_.emitU8(kOpBne);
         buffer_.emitU8(0x00);
-        codegenTrace(verbose_, map_, tokens_, b.span(), "emit compare `!=`: BNE → true branch");
-        buffer_.emitU8(kOpLdaImm);
+        const std::size_t notEqLabel = buffer_.size();
+        // not-equal path => force Z=1
+        buffer_.emitU8(kOpLdxImm);
         buffer_.emitU8(0x00);
-        buffer_.emitU8(kOpJmpAbs);
-        const std::size_t jmpAddrOperandNe = buffer_.size();
-        buffer_.emitAddr16LE(0x0000);
-        const std::size_t trueLabelNe = buffer_.size();
-        buffer_.emitU8(kOpLdaImm);
-        buffer_.emitU8(0x01);
-        const std::size_t skipLabelNe = buffer_.size();
-        patchBranchRel8(buffer_, bneOpcode, trueLabelNe, diagnostics_, errLoc);
-        buffer_.patchAddr16LE(jmpAddrOperandNe, static_cast<std::uint16_t>(skipLabelNe));
+        buffer_.emitU8(kOpCpxAbs);
+        emitDataAddr16(zeroAddr_);
+        const std::size_t doneLabel = buffer_.size();
+        const SourceLocation errLoc = locationAtSpan(map_, tokens_, b.span());
+        patchBranchRel8(buffer_, bneNotEq, notEqLabel, diagnostics_, errLoc);
+        patchBranchRel8(buffer_, bneSkipNotEq, doneLabel, diagnostics_, errLoc);
         return true;
     }
 
@@ -493,6 +660,12 @@ private:
     codegen::MemoryLayout& layout_;
     const codegen::CodeGenTarget& target_;
     codegen::CodeBuffer& buffer_;
+    std::uint16_t zeroAddr_;
+    std::vector<DataAddrFixup> dataAddrFixups_;
+    std::vector<DataImmLowFixup> dataImmLowFixups_;
+    std::size_t nextTempPlaceholderId_ = 0;
+    std::size_t nextJumpPlaceholderId_ = 0;
+    int blockDepth_ = 0;
 };
 
 bool bindLayoutFromSymbols(const std::vector<SymbolRecord>& symbols, codegen::MemoryLayout& layout, DiagnosticBag& diagnostics) {
@@ -536,6 +709,15 @@ bool generate6502Program(
     Generator6502 gen(map, tokens, diagnostics, verbose, layout, target, buffer);
     gen.visitProgram(program);
     buffer.emitU8(kOpBrk);
+    if (!gen.backpatchDataToAfterCode()) {
+        return diagnostics.errorCount() == errorsBefore;
+    }
+
+    if (target.programImageBytes != 0 && buffer.size() < target.programImageBytes) {
+        while (buffer.size() < target.programImageBytes) {
+            buffer.emitU8(0x00);
+        }
+    }
 
     outObject = buffer.bytes();
     return diagnostics.errorCount() == errorsBefore;

@@ -429,6 +429,9 @@ int main(int argc, char** argv) {
 
     std::vector<std::vector<std::uint8_t>> objectCodePerProgram;
     objectCodePerProgram.resize(astPrograms.size());
+    if (!quiet) {
+        std::cout << "Begin CODE GENERATION\n\n";
+    }
     for (std::size_t i = 0; i < astPrograms.size(); ++i) {
         if (astPrograms[i] && typeOkPerProgram[i]) {
             pavic::generate6502Program(
@@ -442,6 +445,10 @@ int main(int argc, char** argv) {
                 objectCodePerProgram[i]
             );
         }
+    }
+    if (!quiet) {
+        const std::size_t codegenErrors = diagnostics.errorCount() - errorsAfterUsage;
+        std::cout << "\nCODE GEN complete with " << codegenErrors << " errors\n\n";
     }
 
     std::vector<std::uint8_t> linkedObject;
@@ -512,7 +519,7 @@ int main(int argc, char** argv) {
         }
         std::cout << "========== end symbol table ==========\n";
 
-        std::cout << "========== 6502a object bytes (per program) ==========\n";
+        std::cout << "6502 Code\n\n";
         for (std::size_t i = 0; i < objectCodePerProgram.size(); ++i) {
             if (i > 0) {
                 std::cout << "\n--- program " << (i + 1) << " ---\n";
@@ -522,7 +529,6 @@ int main(int argc, char** argv) {
                 std::cout << "(no object code; program skipped or not type-checked)\n";
                 continue;
             }
-            std::cout << "bytes (" << bytes.size() << "): ";
             for (std::size_t b = 0; b < bytes.size(); ++b) {
                 if (b != 0) {
                     std::cout << ' ';
@@ -533,7 +539,7 @@ int main(int argc, char** argv) {
             }
             std::cout << "\n";
         }
-        std::cout << "========== end object bytes ==========\n";
+        std::cout << "\nEND\n";
 
         std::cout << "[driver] Parse, scope, type, usage, and codegen succeeded (" << programs.size()
                       << " program(s)); warnings: "
