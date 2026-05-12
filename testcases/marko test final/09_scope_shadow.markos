@@ -1,0 +1,12 @@
+/* marko test final 09: scope shadow */
+{
+ int a
+ a = 1
+ print(a)
+ {
+  int a
+  a = 2
+  print(a)
+ }
+ print(a)
+}$

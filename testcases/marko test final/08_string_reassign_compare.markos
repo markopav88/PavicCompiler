@@ -1,0 +1,9 @@
+/* marko test final 08: string reassignment and compare */
+{
+ string a
+ a = "start"
+ a = "done"
+ if (a == "done") {
+  print(a)
+ }
+}$

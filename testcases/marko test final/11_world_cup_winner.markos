@@ -1,0 +1,11 @@
+/* marko test final 11: world cup winner (string reassignment) */
+{
+ string w
+ w = "england"
+ print(w)
+ w = "croatia"
+ print(w)
+ if (w == "croatia") {
+  print("winner")
+ }
+}$

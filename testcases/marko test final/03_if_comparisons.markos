@@ -1,0 +1,11 @@
+/* marko test final 03: if comparisons */
+{
+ int a
+ a = 3
+ if (a == 3) {
+  print("eq")
+ }
+ if (a != 3) {
+  print("neq")
+ }
+}$

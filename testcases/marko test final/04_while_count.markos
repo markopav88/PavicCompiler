@@ -1,0 +1,9 @@
+/* marko test final 04: while count */
+{
+ int i
+ i = 0
+ while (i != 5) {
+  i = 1 + i
+  print(i)
+ }
+}$

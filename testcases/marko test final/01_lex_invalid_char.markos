@@ -1,0 +1,6 @@
+/* marko test final 01: basic int print */
+{
+ int a
+ a = 7
+ print(a)
+}$

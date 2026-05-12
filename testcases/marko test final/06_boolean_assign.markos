@@ -1,0 +1,11 @@
+/* marko test final 06: boolean assignment and check */
+{
+ int x
+ x = 10
+ boolean b
+ b = (x == 10)
+ print(b)
+ if (b == true) {
+  print("ok")
+ }
+}$

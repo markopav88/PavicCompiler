@@ -1,0 +1,16 @@
+/* marko test final 10: mixed features */
+{
+ int n
+ n = 2
+ string m
+ m = "go"
+ while (n != 5) {
+  print(n)
+  n = 1 + n
+ }
+ boolean d
+ d = (n == 5)
+ if (d == true) {
+  print(m)
+ }
+}$

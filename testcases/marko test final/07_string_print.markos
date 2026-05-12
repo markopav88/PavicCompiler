@@ -1,0 +1,7 @@
+/* marko test final 07: string variable print */
+{
+ string s
+ s = "hello"
+ print(s)
+ print(" world")
+}$

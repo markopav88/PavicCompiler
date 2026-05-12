@@ -1,0 +1,15 @@
+/* marko test final 05: nested while */
+{
+ int o
+ int i
+ o = 0
+ while (o != 2) {
+  i = 0
+  while (i != 2) {
+   print(o)
+   print(i)
+   i = 1 + i
+  }
+  o = 1 + o
+ }
+}$
