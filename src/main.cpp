@@ -7,6 +7,7 @@
 #include "symbol_table.hpp"
 #include "codegen/codegen.hpp"
 #include "optimizer.hpp"
+#include "multi_backend.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "source.hpp"
@@ -28,9 +29,10 @@ constexpr int kExitFailure = 1;
 
 void printUsage(const char* executableName) {
     std::cerr << "Usage: " << executableName
-              << " [-q|--quiet] [--fix] [--emulator] [--intel-hex] [--pad=N] [-o|--output <file>] <source-file>\n";
+              << " [-q|--quiet] [--fix] [--target=6502|llvm-ir|java|typescript] [--emulator] [--intel-hex] [--pad=N] [-o|--output <file>] <source-file>\n";
     std::cerr << "  Verbose traces (lexer, parser, semantic, codegen) are on by default; `-q` disables them.\n";
     std::cerr << "  `--fix` applies conservative `SourceRewrite` suggestions from lexer/parser diagnostics and re-runs lex/parse (bounded).\n";
+    std::cerr << "  `--target=` selects backend output (`6502` default).\n";
     std::cerr << "  `-o` writes linked object bytes after successful codegen (all type-checked programs concatenated).\n";
     std::cerr << "  `--intel-hex` writes Intel HEX instead of raw binary (for loaders / web emulators).\n";
     std::cerr << "  `--emulator` emits EA at syscall sites (e-tradition NOP convention) instead of FF.\n";
@@ -75,6 +77,7 @@ bool parseArguments(
     char** argv,
     bool& quiet,
     bool& applySuggestedFixes,
+    pavic::BackendTarget& backendTarget,
     std::string& sourcePath,
     std::string& outputPath,
     bool& intelHex,
@@ -83,6 +86,7 @@ bool parseArguments(
 ) {
     quiet = false;
     applySuggestedFixes = false;
+    backendTarget = pavic::BackendTarget::Target6502;
     outputPath.clear();
     intelHex = false;
     emulator = false;
@@ -95,6 +99,10 @@ bool parseArguments(
             quiet = true;
         } else if (a == "--fix") {
             applySuggestedFixes = true;
+        } else if (a.rfind("--target=", 0) == 0) {
+            if (!pavic::parseBackendTarget(a.substr(9), backendTarget)) {
+                return false;
+            }
         } else if (a == "-o" || a == "--output") {
             if (i + 1 >= argc) {
                 return false;
@@ -209,6 +217,32 @@ bool writeBinaryObjectFile(
     return true;
 }
 
+bool writeTextFile(
+    const std::string& path,
+    const std::string& text,
+    pavic::DiagnosticBag& diagnostics
+) {
+    std::ofstream out(path, std::ios::binary);
+    if (!out) {
+        diagnostics.addError(
+            "unable to open output file for text backend",
+            {1, 1},
+            "Check the `-o` path and permissions."
+        );
+        return false;
+    }
+    out.write(text.data(), static_cast<std::streamsize>(text.size()));
+    if (!out) {
+        diagnostics.addError(
+            "unable to write complete text output file",
+            {1, 1},
+            "The output path may be on a full disk or a device error may have occurred."
+        );
+        return false;
+    }
+    return true;
+}
+
 void applyPadding(std::vector<std::uint8_t>& bytes, std::uint32_t padMultiple) {
     if (padMultiple == 0 || bytes.empty()) {
         return;
@@ -227,13 +261,25 @@ int main(int argc, char** argv) {
     constexpr int kMaxFixPasses = 32;
     bool quiet = false;
     bool applySuggestedFixes = false;
+    pavic::BackendTarget backendTarget = pavic::BackendTarget::Target6502;
     std::string sourcePath;
     std::string outputPath;
     bool intelHex = false;
     bool emulator = false;
     std::uint32_t padMultiple = 0;
 
-    if (!parseArguments(argc, argv, quiet, applySuggestedFixes, sourcePath, outputPath, intelHex, emulator, padMultiple)) {
+    if (!parseArguments(
+            argc,
+            argv,
+            quiet,
+            applySuggestedFixes,
+            backendTarget,
+            sourcePath,
+            outputPath,
+            intelHex,
+            emulator,
+            padMultiple
+        )) {
         printUsage(argv[0]);
         return kExitFailure;
     }
@@ -430,6 +476,12 @@ int main(int argc, char** argv) {
     const std::size_t errorsAfterUsage = diagnostics.errorCount();
     const bool canRunCodegen = (errorsAfterUsage == errorsBeforeSemantic);
 
+    std::vector<pavic::AstProgram*> astProgramPtrs;
+    astProgramPtrs.reserve(astPrograms.size());
+    for (auto& p : astPrograms) {
+        astProgramPtrs.push_back(p.get());
+    }
+
     pavic::codegen::CodeGenTarget codegenTarget{};
     if (emulator) {
         codegenTarget.sysEncoding = pavic::codegen::SysCallEncoding::EmulatorNopEA;
@@ -437,55 +489,82 @@ int main(int argc, char** argv) {
 
     std::vector<std::vector<std::uint8_t>> objectCodePerProgram;
     objectCodePerProgram.resize(astPrograms.size());
+    std::string textBackendOutput;
+
     if (canRunCodegen) {
-        if (!quiet) {
-            std::cout << "Begin CODE GENERATION\n\n";
-        }
-        for (std::size_t i = 0; i < astPrograms.size(); ++i) {
-            if (astPrograms[i] && typeOkPerProgram[i]) {
-                pavic::generate6502Program(
-                    *astPrograms[i],
-                    sourceMap,
-                    tokens,
-                    symbolTables[i],
-                    codegenTarget,
-                    diagnostics,
-                    !quiet,
-                    objectCodePerProgram[i]
+        if (backendTarget == pavic::BackendTarget::Target6502) {
+            if (!quiet) {
+                std::cout << "Begin CODE GENERATION\n\n";
+            }
+            for (std::size_t i = 0; i < astPrograms.size(); ++i) {
+                if (astPrograms[i] && typeOkPerProgram[i]) {
+                    pavic::generate6502Program(
+                        *astPrograms[i],
+                        sourceMap,
+                        tokens,
+                        symbolTables[i],
+                        codegenTarget,
+                        diagnostics,
+                        !quiet,
+                        objectCodePerProgram[i]
+                    );
+                }
+            }
+            if (!quiet) {
+                const std::size_t codegenErrors = diagnostics.errorCount() - errorsAfterUsage;
+                std::cout << "\nCODE GEN complete with " << codegenErrors << " errors\n\n";
+            }
+        } else {
+            bool ok = false;
+            if (backendTarget == pavic::BackendTarget::TargetLlvmIr) {
+                ok = pavic::emitLlvmIrModule(astProgramPtrs, sourceMap, tokens, diagnostics, textBackendOutput);
+            } else if (backendTarget == pavic::BackendTarget::TargetJavaSource) {
+                ok = pavic::emitJavaSourceModule(astProgramPtrs, sourceMap, tokens, diagnostics, textBackendOutput);
+            } else if (backendTarget == pavic::BackendTarget::TargetTypeScriptSource) {
+                ok = pavic::emitTypeScriptModule(astProgramPtrs, sourceMap, tokens, diagnostics, textBackendOutput);
+            }
+            if (!ok && diagnostics.errorCount() == errorsAfterUsage) {
+                diagnostics.addError(
+                    std::string("backend generation failed for target `") + pavic::backendTargetName(backendTarget) + "`",
+                    {1, 1}
                 );
             }
-        }
-        if (!quiet) {
-            const std::size_t codegenErrors = diagnostics.errorCount() - errorsAfterUsage;
-            std::cout << "\nCODE GEN complete with " << codegenErrors << " errors\n\n";
         }
     }
 
     std::vector<std::uint8_t> linkedObject;
     if (!outputPath.empty() && canRunCodegen && diagnostics.errorCount() == errorsBeforeSemantic) {
-        for (std::size_t i = 0; i < objectCodePerProgram.size(); ++i) {
-            const auto& chunk = objectCodePerProgram[i];
-            if (!chunk.empty()) {
-                linkedObject.insert(linkedObject.end(), chunk.begin(), chunk.end());
+        if (backendTarget == pavic::BackendTarget::Target6502) {
+            for (std::size_t i = 0; i < objectCodePerProgram.size(); ++i) {
+                const auto& chunk = objectCodePerProgram[i];
+                if (!chunk.empty()) {
+                    linkedObject.insert(linkedObject.end(), chunk.begin(), chunk.end());
+                }
             }
-        }
-        applyPadding(linkedObject, padMultiple);
-        const std::uint16_t loadBase = codegenTarget.ramBase;
-        if (intelHex) {
-            writeIntelHexFile(outputPath, loadBase, linkedObject, diagnostics);
+            applyPadding(linkedObject, padMultiple);
+            const std::uint16_t loadBase = codegenTarget.ramBase;
+            if (intelHex) {
+                writeIntelHexFile(outputPath, loadBase, linkedObject, diagnostics);
+            } else {
+                writeBinaryObjectFile(outputPath, linkedObject, diagnostics);
+            }
+            if (!quiet && diagnostics.errorCount() == errorsBeforeSemantic) {
+                std::cout << "[driver] Wrote object file `" << outputPath << "` (" << linkedObject.size() << " byte(s), load base $";
+                char baseBuf[8];
+                std::snprintf(baseBuf, sizeof(baseBuf), "%04X", static_cast<unsigned>(loadBase));
+                std::cout << baseBuf;
+                std::cout << (intelHex ? ", Intel HEX" : ", raw binary");
+                if (padMultiple != 0) {
+                    std::cout << ", padded with $00 to a multiple of " << padMultiple;
+                }
+                std::cout << ").\n";
+            }
         } else {
-            writeBinaryObjectFile(outputPath, linkedObject, diagnostics);
-        }
-        if (!quiet && diagnostics.errorCount() == errorsBeforeSemantic) {
-            std::cout << "[driver] Wrote object file `" << outputPath << "` (" << linkedObject.size() << " byte(s), load base $";
-            char baseBuf[8];
-            std::snprintf(baseBuf, sizeof(baseBuf), "%04X", static_cast<unsigned>(loadBase));
-            std::cout << baseBuf;
-            std::cout << (intelHex ? ", Intel HEX" : ", raw binary");
-            if (padMultiple != 0) {
-                std::cout << ", padded with $00 to a multiple of " << padMultiple;
+            writeTextFile(outputPath, textBackendOutput, diagnostics);
+            if (!quiet && diagnostics.errorCount() == errorsBeforeSemantic) {
+                std::cout << "[driver] Wrote `" << pavic::backendTargetName(backendTarget) << "` output to `" << outputPath
+                          << "` (" << textBackendOutput.size() << " byte(s)).\n";
             }
-            std::cout << ").\n";
         }
     }
 
@@ -498,9 +577,9 @@ int main(int argc, char** argv) {
             const std::size_t scopeErrs = errorsAfterScope - errorsBeforeSemantic;
             const std::size_t typeErrs = errorsAfterType - errorsAfterScope;
             const std::size_t codegenErrs = diagnostics.errorCount() - errorsAfterUsage;
-            std::cout << "[driver] Semantic/codegen check failed: " << (diagnostics.errorCount() - errorsBeforeSemantic)
-                      << " error(s) (scope: " << scopeErrs << ", type: " << typeErrs << ", codegen: " << codegenErrs
-                      << "). Abstract syntax tree and symbol table were not printed; code generation is incomplete.\n";
+            std::cout << "[driver] Semantic/backend check failed: " << (diagnostics.errorCount() - errorsBeforeSemantic)
+                      << " error(s) (scope: " << scopeErrs << ", type: " << typeErrs << ", backend: " << codegenErrs
+                      << "). Abstract syntax tree and symbol table were not printed; output generation is incomplete.\n";
         }
         return kExitFailure;
     }
@@ -529,32 +608,41 @@ int main(int argc, char** argv) {
         }
         std::cout << "========== end symbol table ==========\n";
 
-        std::cout << "6502 Code\n\n";
-        for (std::size_t i = 0; i < objectCodePerProgram.size(); ++i) {
-            if (i > 0) {
-                std::cout << "\n--- program " << (i + 1) << " ---\n";
-            }
-            const auto& bytes = objectCodePerProgram[i];
-            if (bytes.empty()) {
-                std::cout << "(no object code; program skipped or not type-checked)\n";
-                continue;
-            }
-            for (std::size_t b = 0; b < bytes.size(); ++b) {
-                if (b != 0) {
-                    std::cout << ' ';
+        if (backendTarget == pavic::BackendTarget::Target6502) {
+            std::cout << "6502 Code\n\n";
+            for (std::size_t i = 0; i < objectCodePerProgram.size(); ++i) {
+                if (i > 0) {
+                    std::cout << "\n--- program " << (i + 1) << " ---\n";
                 }
-                char buf[4];
-                std::snprintf(buf, sizeof(buf), "%02X", static_cast<unsigned>(bytes[b]));
-                std::cout << buf;
+                const auto& bytes = objectCodePerProgram[i];
+                if (bytes.empty()) {
+                    std::cout << "(no object code; program skipped or not type-checked)\n";
+                    continue;
+                }
+                for (std::size_t b = 0; b < bytes.size(); ++b) {
+                    if (b != 0) {
+                        std::cout << ' ';
+                    }
+                    char buf[4];
+                    std::snprintf(buf, sizeof(buf), "%02X", static_cast<unsigned>(bytes[b]));
+                    std::cout << buf;
+                }
+                std::cout << "\n";
             }
-            std::cout << "\n";
+            std::cout << "\nEND\n";
+        } else {
+            std::cout << "Generated " << pavic::backendTargetName(backendTarget) << " output\n\n";
+            std::cout << textBackendOutput;
+            if (!textBackendOutput.empty() && textBackendOutput.back() != '\n') {
+                std::cout << "\n";
+            }
+            std::cout << "END\n";
         }
-        std::cout << "\nEND\n";
 
-        std::cout << "[driver] Parse, scope, type, usage, and codegen succeeded (" << programs.size()
-                      << " program(s)); warnings: "
-                      << diagnostics.warningCount() << ", hints: " << diagnostics.hintCount()
-                      << ". (Only errors block AST, symbol table, and object listing; warnings and hints are informational.)\n";
+        std::cout << "[driver] Parse, scope, type, usage, and backend generation succeeded (" << programs.size()
+                  << " program(s), target: " << pavic::backendTargetName(backendTarget) << "); warnings: "
+                  << diagnostics.warningCount() << ", hints: " << diagnostics.hintCount()
+                  << ". (Only errors block AST, symbol table, and output listing; warnings and hints are informational.)\n";
     }
 
     return kExitSuccess;

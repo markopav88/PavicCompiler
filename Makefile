@@ -20,7 +20,8 @@ SOURCES := \
 	src/semantic_usage.cpp \
 	src/codegen/memory_layout.cpp \
 	src/codegen/code_buffer.cpp \
-	src/codegen/codegen.cpp
+	src/codegen/codegen.cpp \
+	src/multi_backend.cpp
 
 TARGET := pavicc
 

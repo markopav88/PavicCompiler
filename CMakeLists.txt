@@ -23,6 +23,7 @@ add_executable(pavicc
     src/codegen/memory_layout.cpp
     src/codegen/code_buffer.cpp
     src/codegen/codegen.cpp
+    src/multi_backend.cpp
 )
 
 target_include_directories(pavicc PRIVATE src)

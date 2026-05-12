@@ -104,7 +104,7 @@ g++ -std=c++17 -Wall -Wextra -pedantic -Isrc -o pavicc \
   src/main.cpp src/diagnostic.cpp src/source.cpp src/token.cpp src/lexer.cpp \
   src/cst.cpp src/parser.cpp src/ast.cpp src/ast_lower.cpp src/optimizer.cpp src/symbol_table.cpp \
   src/semantic_scope.cpp src/semantic_type.cpp src/semantic_usage.cpp \
-  src/codegen/memory_layout.cpp src/codegen/code_buffer.cpp src/codegen/codegen.cpp
+  src/codegen/memory_layout.cpp src/codegen/code_buffer.cpp src/codegen/codegen.cpp src/multi_backend.cpp
 ```
 
 **CMake (optional):**
@@ -119,6 +119,10 @@ cmake --build build
 ```bash
 ./pavicc <source-file>              # after `make`
 ./pavicc -q <source-file>           # quiet mode (no verbose lexer trace)
+./pavicc --target=6502 <source-file>
+./pavicc --target=llvm-ir -o out.ll <source-file>
+./pavicc --target=java -o GeneratedProgram.java <source-file>
+./pavicc --target=typescript -o generated.ts <source-file>
 ```
 
 Or, if built with CMake:
@@ -129,6 +133,63 @@ Or, if built with CMake:
 ```
 
 Verbose compiler traces (lexer, parser, semantic, and codegen) are enabled by default.
+
+## Multi-Backend Targets
+
+In addition to the default 6502 backend, the compiler can now emit:
+
+- LLVM IR text (`--target=llvm-ir`)
+- Java source (`--target=java`)
+- TypeScript source (`--target=typescript`)
+
+`6502` remains the default target when `--target` is omitted.
+
+### What was added
+
+- Added a backend selector in the CLI (`--target=...`) while keeping original 6502 behavior as the default path.
+- Added a new multi-backend module:
+  - `src/multi_backend.hpp`
+  - `src/multi_backend.cpp`
+- Added source generation backends that consume the same optimized AST:
+  - LLVM IR text emitter
+  - Java source emitter
+  - TypeScript source emitter
+- Added batch test automation for the final showcase suite:
+  - `tests/run_marko_final_multibackend.sh`
+
+### Compatibility and safety
+
+- Existing 6502 flow is unchanged when `--target` is omitted.
+- New backend output is opt-in only via `--target`.
+- Semantic/type/scope checks still gate backend generation.
+
+### LLVM -> JVM note
+
+This repository now emits LLVM IR text, but direct LLVM-to-JVM bytecode conversion requires an external bridge toolchain (not bundled here). Java source and TypeScript source generation are fully integrated and runnable with `javac/java` and `tsc/node`.
+
+Example (single test):
+
+```bash
+./build/pavicc --target=llvm-ir -o /tmp/program.ll "testcases/marko test final/11_world_cup_winner.markos"
+./build/pavicc --target=java -o /tmp/GeneratedProgram.java "testcases/marko test final/11_world_cup_winner.markos"
+./build/pavicc --target=typescript -o /tmp/generated.ts "testcases/marko test final/11_world_cup_winner.markos"
+```
+
+Run generated Java + TypeScript:
+
+```bash
+javac /tmp/GeneratedProgram.java
+java -cp /tmp GeneratedProgram
+
+tsc --target ES2020 --module commonjs /tmp/generated.ts --outDir /tmp
+node /tmp/generated.js
+```
+
+Batch script for `marko test final` (generates LLVM IR + Java + TypeScript, and runs Java/TypeScript when toolchains exist):
+
+```bash
+./tests/run_marko_final_multibackend.sh
+```
 
 ## Showcase CLI Tests
 
