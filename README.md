@@ -191,6 +191,34 @@ Batch script for `marko test final` (generates LLVM IR + Java + TypeScript, and 
 ./tests/run_marko_final_multibackend.sh
 ```
 
+### Optional toolchain support (simple)
+
+A **toolchain** is the external compiler/runtime pair used for a backend target.
+
+- Java toolchain: `javac` + `java`
+- TypeScript toolchain: `tsc` + `node`
+
+How to use this option:
+
+1. Generate target source from Markos:
+
+```bash
+./build/pavicc --target=java -o /tmp/GeneratedProgram.java "testcases/marko test final/11_world_cup_winner.markos"
+./build/pavicc --target=typescript -o /tmp/generated.ts "testcases/marko test final/11_world_cup_winner.markos"
+```
+
+2. Compile/run with the matching toolchain:
+
+```bash
+javac /tmp/GeneratedProgram.java
+java -cp /tmp GeneratedProgram
+
+tsc --target ES2020 --module commonjs /tmp/generated.ts --outDir /tmp
+node /tmp/generated.js
+```
+
+If a toolchain is not installed, 6502 still works normally and remains the default target.
+
 ## Showcase CLI Tests
 
 Use these two tests to quickly demonstrate the full compiler flow on meaningful programs.
