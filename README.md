@@ -3,7 +3,7 @@ Markos Compiler built in C++ 17!!!
 
 ## Overview
 
-PavicCompiler is a course compiler project for the Markos language. The compiler pipeline includes:
+PavicCompiler is a course compiler project. The compiler pipeline includes:
 
 - **Frontend**: lexer, parser, CST/AST construction, and semantic analysis (scope, type, and usage checks).
 - **IR Optimization**: AST-level optimizations (constant folding, propagation, dead code elimination, and bounded loop unrolling).
