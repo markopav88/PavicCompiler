@@ -244,3 +244,14 @@ Example sequence:
 - If lexer `errorCount > 0`: stop and skip parser.
 - If lexer `errorCount == 0`: report "ready for parser next milestone".
 
+## AI Assistance Reflection
+
+AI tools were a major help throughout this project, especially while learning C++ and working through a steep compiler-development learning curve.
+
+The biggest value areas were:
+- **Code formatting and cleanup**: keeping code readable and consistent while iterating quickly.
+- **Code explanation and learning support**: helping break down unfamiliar C++ and compiler concepts into understandable steps.
+- **System design guidance**: helping reason about architecture decisions across lexer, parser, semantic analysis, optimization, and 6502 codegen.
+
+AI support also improved productivity during difficult debugging sessions (for example around codegen behavior and edge-case failures). Overall, the experience was strongly positive, and LLM-based tooling was genuinely helpful in delivering this project.
+
