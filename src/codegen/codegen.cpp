@@ -30,6 +30,7 @@ constexpr std::uint8_t kOpLdxImm = 0xA2;
 constexpr std::uint8_t kOpLdxAbs = 0xAE;
 constexpr std::uint8_t kOpCpxAbs = 0xEC;
 constexpr std::uint8_t kOpIncAbs = 0xEE;
+constexpr std::uint8_t kOpAdcAbs = 0x6D;
 constexpr std::uint8_t kOpBne = 0xD0;
 constexpr std::uint8_t kOpLdyImm = 0xA0;
 constexpr std::uint8_t kOpLdyAbs = 0xAC;
@@ -106,7 +107,8 @@ public:
           target_(target),
           buffer_(buffer),
           symbols_(symbols),
-          zeroAddr_(layout_.allocateAnonymous(1)) {}
+          zeroAddr_(layout_.allocateAnonymous(1)),
+          oneAddr_(layout_.allocateAnonymous(1)) {}
 
     void visitProgram(AstProgram& program) {
         codegenTrace(verbose_, map_, tokens_, program.span(), "Block");
@@ -119,6 +121,11 @@ public:
         buffer_.emitU8(0x00);
         buffer_.emitU8(kOpStaAbs);
         emitDataAddr16(zeroAddr_);
+        // Reserve a stable byte that always stores 1; used to clear carry before ADC via CPX.
+        buffer_.emitU8(kOpLdaImm);
+        buffer_.emitU8(0x01);
+        buffer_.emitU8(kOpStaAbs);
+        emitDataAddr16(oneAddr_);
         visitBlock(*program.block());
     }
 
@@ -684,55 +691,70 @@ private:
         }
         case AstNodeKind::AddExpr: {
             auto& a = static_cast<AstAddExpr&>(e);
-            // Strict-opcode addition using INC/CPX/BNE loop (no CLC/TAY/JMP).
-            const std::uint16_t sumSlot = layout_.allocateAnonymous(1);
-            const std::uint16_t rightSlot = layout_.allocateAnonymous(1);
-            const std::uint16_t counterSlot = layout_.allocateAnonymous(1);
-            codegenTrace(verbose_, map_, tokens_, e.span(), "emit AddExpr: left->sum, right->limit, INC loop");
+            auto parseSmallLiteralInt = [](AstExpr* ex, int& out) -> bool {
+                if (!ex || ex->nodeKind() != AstNodeKind::LiteralInt) {
+                    return false;
+                }
+                const auto& lit = static_cast<const AstLiteralInt&>(*ex);
+                try {
+                    out = std::stoi(lit.lexeme());
+                } catch (...) {
+                    return false;
+                }
+                return out >= 0 && out <= 8;
+            };
+
+            int k = 0;
+            AstExpr* baseExpr = nullptr;
+            if (parseSmallLiteralInt(a.left(), k)) {
+                baseExpr = a.right();
+            } else if (parseSmallLiteralInt(a.right(), k)) {
+                baseExpr = a.left();
+            }
+
+            if (baseExpr != nullptr) {
+                const std::uint16_t sumSlot = layout_.allocateAnonymous(1);
+                if (!emitIntExpr(*baseExpr, ExprTarget::Accumulator)) {
+                    return false;
+                }
+                buffer_.emitU8(kOpStaAbs);
+                emitDataAddr16(sumSlot);
+                for (int i = 0; i < k; ++i) {
+                    buffer_.emitU8(kOpIncAbs);
+                    emitDataAddr16(sumSlot);
+                }
+                buffer_.emitU8(kOpLdaAbs);
+                emitDataAddr16(sumSlot);
+                if (dest == ExprTarget::RegisterY) {
+                    buffer_.emitU8(kOpLdyAbs);
+                    emitDataAddr16(sumSlot);
+                }
+                return true;
+            }
+
+            // General int addition via ADC absolute.
+            // Carry clear without CLC: compare X=0 against memory byte 1 => C=0.
+            const std::uint16_t leftSlot = layout_.allocateAnonymous(1);
+            codegenTrace(verbose_, map_, tokens_, e.span(), "emit AddExpr: left->slot, right->A, clear C, ADC left");
             if (!emitIntExpr(*a.left(), ExprTarget::Accumulator)) {
                 return false;
             }
             buffer_.emitU8(kOpStaAbs);
-            emitDataAddr16(sumSlot);
-            codegenTrace(verbose_, map_, tokens_, e.span(), "emit AddExpr: evaluate right → A");
+            emitDataAddr16(leftSlot);
             if (!emitIntExpr(*a.right(), ExprTarget::Accumulator)) {
                 return false;
             }
-            buffer_.emitU8(kOpStaAbs);
-            emitDataAddr16(rightSlot);
-            buffer_.emitU8(kOpLdaImm);
+            buffer_.emitU8(kOpLdxImm);
             buffer_.emitU8(0x00);
-            buffer_.emitU8(kOpStaAbs);
-            emitDataAddr16(counterSlot);
-            const std::size_t loopTop = buffer_.size();
-            buffer_.emitU8(kOpLdxAbs);
-            emitDataAddr16(counterSlot);
             buffer_.emitU8(kOpCpxAbs);
-            emitDataAddr16(rightSlot); // Z=1 when counter==right => done.
-            const std::size_t bneBodyOpcode = buffer_.size();
-            buffer_.emitU8(kOpBne);
-            buffer_.emitU8(0x00); // to body
-            // equal-path (Z=1): skip body and continue at doneLabel.
-            emitForceZClear();
-            const std::size_t bneDoneOpcode = buffer_.size();
-            buffer_.emitU8(kOpBne);
-            buffer_.emitU8(0x00);
-            const std::size_t bodyLabel = buffer_.size();
-            patchBranchRel8(buffer_, bneBodyOpcode, bodyLabel, diagnostics_, locationAtSpan(map_, tokens_, e.span()));
-            buffer_.emitU8(kOpIncAbs);
-            emitDataAddr16(sumSlot);
-            buffer_.emitU8(kOpIncAbs);
-            emitDataAddr16(counterSlot);
-            emitBranchAlwaysTo(loopTop, e.span());
-            const std::size_t doneLabel = buffer_.size();
-            patchBranchRel8(buffer_, bneDoneOpcode, doneLabel, diagnostics_, locationAtSpan(map_, tokens_, e.span()));
-            buffer_.emitU8(kOpLdaAbs);
-            emitDataAddr16(sumSlot);
+            emitDataAddr16(oneAddr_); // C=0
+            buffer_.emitU8(kOpAdcAbs);
+            emitDataAddr16(leftSlot);
             if (dest == ExprTarget::RegisterY) {
                 buffer_.emitU8(kOpStaAbs);
-                emitDataAddr16(counterSlot);
+                emitDataAddr16(leftSlot);
                 buffer_.emitU8(kOpLdyAbs);
-                emitDataAddr16(counterSlot);
+                emitDataAddr16(leftSlot);
             }
             return true;
         }
@@ -943,44 +965,103 @@ private:
             std::string("emit BinaryBoolExpr: int compare (") + (op == AstBinaryBoolExpr::Op::Equal ? "==" : "!=") + ")"
         );
 
-        const std::uint16_t leftSlot = layout_.allocateAnonymous(1);
-        const std::uint16_t rightSlot = layout_.allocateAnonymous(1);
-        if (!emitIntExpr(*b.left(), ExprTarget::Accumulator)) {
-            return false;
-        }
-        buffer_.emitU8(kOpStaAbs);
-        emitDataAddr16(leftSlot);
-        codegenTrace(verbose_, map_, tokens_, b.span(), "emit compare: right → slot, LDX left, CPX right");
+        auto parseLiteralU8 = [](AstExpr& ex, std::uint8_t& out) -> bool {
+            if (ex.nodeKind() != AstNodeKind::LiteralInt) {
+                return false;
+            }
+            const auto& lit = static_cast<const AstLiteralInt&>(ex);
+            int value = 0;
+            try {
+                value = std::stoi(lit.lexeme());
+            } catch (...) {
+                return false;
+            }
+            if (value < 0 || value > 255) {
+                return false;
+            }
+            out = static_cast<std::uint8_t>(value);
+            return true;
+        };
 
-        if (!emitIntExpr(*b.right(), ExprTarget::Accumulator)) {
+        auto emitLoadXFromExpr = [&](AstExpr& ex) -> bool {
+            if (ex.nodeKind() == AstNodeKind::IdentifierExpr) {
+                auto& id = static_cast<AstIdentifierExpr&>(ex);
+                if (!id.hasResolvedDeclScope()) {
+                    codegenError(ex.span(), "codegen: internal error (identifier missing resolved scope)", "Re-run scope analysis.");
+                    return false;
+                }
+                const codegen::VarKey key{id.name(), id.resolvedDeclScopeId()};
+                buffer_.emitU8(kOpLdxAbs);
+                emitDataAddr16(layout_.addressOf(key));
+                return true;
+            }
+            std::uint8_t imm = 0;
+            if (parseLiteralU8(ex, imm)) {
+                buffer_.emitU8(kOpLdxImm);
+                buffer_.emitU8(imm);
+                return true;
+            }
+            const std::uint16_t slot = layout_.allocateAnonymous(1);
+            if (!emitIntExpr(ex, ExprTarget::Accumulator)) {
+                return false;
+            }
+            buffer_.emitU8(kOpStaAbs);
+            emitDataAddr16(slot);
+            buffer_.emitU8(kOpLdxAbs);
+            emitDataAddr16(slot);
+            return true;
+        };
+
+        auto emitCpxFromExpr = [&](AstExpr& ex) -> bool {
+            if (ex.nodeKind() == AstNodeKind::IdentifierExpr) {
+                auto& id = static_cast<AstIdentifierExpr&>(ex);
+                if (!id.hasResolvedDeclScope()) {
+                    codegenError(ex.span(), "codegen: internal error (identifier missing resolved scope)", "Re-run scope analysis.");
+                    return false;
+                }
+                const codegen::VarKey key{id.name(), id.resolvedDeclScopeId()};
+                buffer_.emitU8(kOpCpxAbs);
+                emitDataAddr16(layout_.addressOf(key));
+                return true;
+            }
+            const std::uint16_t slot = layout_.allocateAnonymous(1);
+            if (!emitIntExpr(ex, ExprTarget::Accumulator)) {
+                return false;
+            }
+            buffer_.emitU8(kOpStaAbs);
+            emitDataAddr16(slot);
+            buffer_.emitU8(kOpCpxAbs);
+            emitDataAddr16(slot);
+            return true;
+        };
+
+        if (!emitLoadXFromExpr(*b.left())) {
             return false;
         }
-        buffer_.emitU8(kOpStaAbs);
-        emitDataAddr16(rightSlot);
-        buffer_.emitU8(kOpLdxAbs);
-        emitDataAddr16(leftSlot);
-        buffer_.emitU8(kOpCpxAbs);
-        emitDataAddr16(rightSlot); // Z=1 when equal
+        codegenTrace(verbose_, map_, tokens_, b.span(), "emit compare: LDX left, CPX right");
+        if (!emitCpxFromExpr(*b.right())) {
+            return false;
+        } // Z=1 when equal
 
         if (op == AstBinaryBoolExpr::Op::Equal) {
             return true;
         }
 
         // Invert Z for `!=`: after this, Z=1 means not equal.
+        // Compact inversion with only allowed opcodes:
+        // if Z==0 (not equal) -> LDA #0 (Z=1)
+        // if Z==1 (equal)     -> LDA #1 (Z=0)
         const std::size_t bneNotEq = buffer_.size();
         buffer_.emitU8(kOpBne);
         buffer_.emitU8(0x00); // branch when original Z=0 (not equal)
-        // equal path => force Z=0
-        emitForceZClear();
+        buffer_.emitU8(kOpLdaImm);
+        buffer_.emitU8(0x01); // equal path => false => Z=0
         const std::size_t bneSkipNotEq = buffer_.size();
         buffer_.emitU8(kOpBne);
         buffer_.emitU8(0x00);
         const std::size_t notEqLabel = buffer_.size();
-        // not-equal path => force Z=1
-        buffer_.emitU8(kOpLdxImm);
-        buffer_.emitU8(0x00);
-        buffer_.emitU8(kOpCpxAbs);
-        emitDataAddr16(zeroAddr_);
+        buffer_.emitU8(kOpLdaImm);
+        buffer_.emitU8(0x00); // not-equal path => true => Z=1
         const std::size_t doneLabel = buffer_.size();
         const SourceLocation errLoc = locationAtSpan(map_, tokens_, b.span());
         patchBranchRel8(buffer_, bneNotEq, notEqLabel, diagnostics_, errLoc);
@@ -1003,6 +1084,7 @@ private:
     codegen::CodeBuffer& buffer_;
     const std::vector<SymbolRecord>& symbols_;
     std::uint16_t zeroAddr_;
+    std::uint16_t oneAddr_;
     std::uint16_t heapBase_ = 0x0100;
     std::vector<std::string> plannedStringPayloads_;
     std::map<std::string, std::uint16_t> stringPoolByPayload_;
