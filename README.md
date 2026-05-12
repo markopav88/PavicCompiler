@@ -111,36 +111,6 @@ Or, if built with CMake:
 
 Verbose lexer trace is enabled by default.
 
-## Quick Run
-
-```bash
-# Build (recommended)
-make
-
-# Or direct fallback build (no make)
-g++ -std=c++17 -Wall -Wextra -pedantic -Isrc -o pavicc \
-  src/main.cpp src/diagnostic.cpp src/source.cpp src/token.cpp src/lexer.cpp \
-  src/cst.cpp src/parser.cpp src/ast.cpp src/ast_lower.cpp src/symbol_table.cpp \
-  src/semantic_scope.cpp src/semantic_type.cpp src/semantic_usage.cpp \
-  src/codegen/memory_layout.cpp src/codegen/code_buffer.cpp src/codegen/codegen.cpp
-
-# Run on any source program provided 
-./pavicc <source-file>
-
-# Optional modes
-./pavicc -q <source-file>
-./pavicc --fix <source-file>
-./pavicc -q --emulator -o <out.bin> <source-file>
-./pavicc -q --intel-hex -o <out.hex> <source-file>
-```
-
-## Developer Test Commands
-
-```bash
-make test
-make phase-tests
-```
-
 ## Showcase CLI Tests
 
 Use these two tests to quickly demonstrate the full compiler flow on meaningful programs.
