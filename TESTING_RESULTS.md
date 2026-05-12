@@ -1,6 +1,6 @@
-# Testing Results (Informal)
+# Testing Results 
 
-This is a quick write-up of what I tested during development and what I observed.
+This is a quick write-up of what I tested during development and what I observed. Lots of tests are important! You can never have too many!(Maybe)
 
 ## Test Coverage Used
 
