@@ -1,0 +1,11 @@
+/*test while and if*/
+{
+if true{
+  int a
+  a = 0
+}
+while (a != 9) {
+  print(a)
+  a = 1+a
+}
+}$

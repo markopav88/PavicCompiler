@@ -1,0 +1,8 @@
+{
+string   x
+x = "hello 
+string y
+y = "world
+print (x)
+print(y)
+} $

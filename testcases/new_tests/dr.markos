@@ -1,0 +1,11 @@
+/*LONGER if in a while*/
+{
+  int r r = 2
+  while(r != 8+8) {
+print(r)
+    if (r == 8) {
+      print("half way")
+    }
+ r = 2+r
+  }
+}$

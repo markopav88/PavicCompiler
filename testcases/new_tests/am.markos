@@ -1,0 +1,4 @@
+{ int a a = 1 print(A)}$ /*LEX error*/
+{ int b b = 2 print(b }$ /*PARSE error*/
+{ int c c = 3 print(c)}$ /*Good*/
+{ int d d = 4 print(d)}  /*LEX warning*/

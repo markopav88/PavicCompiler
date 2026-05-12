@@ -1,0 +1,9 @@
+/*addition*/
+{
+  int e e=8
+  print(e) /*8*/
+  int r r=9
+  print(r) /*9*/
+  e = 2+2
+  print(e) /*4*/
+}$

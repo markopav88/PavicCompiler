@@ -1,0 +1,7 @@
+string c c = "copy of "
+    print(c)
+    print(p)
+    print(" is ")
+    c = p
+    print(c)
+}$

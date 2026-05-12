@@ -1,0 +1,15 @@
+/*SEM ANALYSIS */
+{
+ int a
+ a = 1
+ {
+  string a
+  a = "a"
+  print(a)
+ }
+ string b
+ b = "b"
+ if (a == 1) {
+  print(b)
+ }
+}

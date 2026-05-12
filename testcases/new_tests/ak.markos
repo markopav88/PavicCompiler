@@ -1,0 +1,7 @@
+/* works for now */
+{
+ string s
+ h = "hello "
+ w = "world"
+ print (1+h)
+ print (2+w)

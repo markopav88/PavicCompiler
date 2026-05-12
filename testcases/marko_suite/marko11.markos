@@ -1,0 +1,20 @@
+/*reusing printed strings and string
+variables*/
+{
+string p p = "pillow"
+print(p)
+print(" is ")
+print("pillow")
+print(" ")
+print("leech")
+print(" is ")
+string l l = "leech"
+print(l)
+print(" ")
+string c c = "copy of "
+print(c)
+print(p)
+print(" is ")
+c = p
+print(c)
+}$

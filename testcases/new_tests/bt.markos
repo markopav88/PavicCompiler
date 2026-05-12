@@ -1,0 +1,20 @@
+/*a normal code*/
+{ 
+  int a
+  a = 9
+  if (a == 3) {
+    print ("three ")
+    print(a)
+  }
+  if (a != 3) {
+    print("not three ")
+    print(a)
+  }
+  boolean e
+  e = (a == 3)
+  { { 
+      print("it was ")
+      print(e)
+  } }
+  int h
+}$

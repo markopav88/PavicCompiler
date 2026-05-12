@@ -1,0 +1,15 @@
+/*big heap*/
+{
+print("the vowels are as follows")
+print(" aaaaaaaaaaaaaaaaaaaaaaaa")
+print(" eeeeeeeeeeeeeeeeeeeeeeee")
+print(" iiiiiiiiiiiiiiiiiiiiiiii")
+print(" oooooooooooooooooooooooo")
+print(" uuuuuuuuuuuuuuuuuuuuuuuu")
+print(" and sometimes yyyyyyyyyy")
+print(" and maybe even wwwwwwwww")
+/*
+print("heap is too big if this gets
+printed")
+*/
+}$

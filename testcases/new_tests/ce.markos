@@ -1,0 +1,12 @@
+/*assign boolean with equality*/
+{
+  int a a = 6
+  boolean b
+  b = (8==a)
+  print(b)
+  {
+    boolean b
+    b = (a==a)
+    print(b)
+  }
+}$

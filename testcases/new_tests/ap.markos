@@ -1,0 +1,5 @@
+{ while {print(a)} }$
+{ int a=0 }$
+{ print(string) }$
+{ k=k+1 }$
+{ k=8+8+8+a+0 }$

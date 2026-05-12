@@ -1,0 +1,8 @@
+{
+  boolean t 
+  t = true 
+  print(t)
+  boolean f 
+  f = false 
+  print(f)
+}$

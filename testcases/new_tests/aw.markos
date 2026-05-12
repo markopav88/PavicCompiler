@@ -1,0 +1,6 @@
+{
+  int a a = 1
+  int r
+  r = 1 + 2 + 3 + a
+  print(r)
+} $

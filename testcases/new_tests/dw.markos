@@ -1,0 +1,18 @@
+{
+  string a a = "abc"
+  if (a == "abc") {
+    print(a)
+    a = "def"
+  }
+  if (a == a) {
+    if (a == "def") {
+      print("def")
+    }
+  }
+  if (true != false) {
+    a = "ghi"
+    {
+      print(a)
+    }
+  }
+}$

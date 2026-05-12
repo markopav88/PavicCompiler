@@ -1,0 +1,7 @@
+print(i)
+/*this is logical*/
+{
+if true {
+print(true)
+}
+}$

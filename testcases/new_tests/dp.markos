@@ -1,0 +1,15 @@
+{
+  int r r = 2
+  string s
+  while(r != 8+8) {
+    s = " "
+    print(r)
+    r = 2+r 
+    print(s)
+    if ( r == 8) {
+      print("half way")
+    }
+  }
+  print("final r is ")
+  print(r)
+}$

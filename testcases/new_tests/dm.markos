@@ -1,0 +1,9 @@
+/*mess with extra scopes*/
+        if (t!=true){
+            {
+                {
+                    s="lala"
+                }
+            /*s="haha"*/
+            }
+        }

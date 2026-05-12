@@ -1,0 +1,6 @@
+{
+ string a
+ a = "alan"
+ a = "marko"
+ print(a)
+}$

@@ -1,0 +1,11 @@
+/*print more booleans*/
+{
+  boolean f f = false
+  boolean t t = true
+  {
+    f = (true==f)
+    print(f)
+    print(false)
+    print(4)
+    f = true
+    print(f)

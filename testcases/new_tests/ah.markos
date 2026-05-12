@@ -1,0 +1,4 @@
+while (i != 7) {
+  print(i) 
+  print(" ")
+  print((i == 7))

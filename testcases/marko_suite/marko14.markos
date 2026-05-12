@@ -1,0 +1,21 @@
+/*all data types*/
+{
+int h
+h = 4
+print (1+h)
+string g
+boolean r r = ("your" == "youre")
+if (r) {
+print("grammer")
+}
+if (r == false) {
+print("begin while loop")
+while(h != 8) {
+print(h)
+/*wrong order:*/
+h = h+1
+g = "bye"
+}
+}
+print(g)
+}$

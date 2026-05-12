@@ -1,0 +1,6 @@
+/*reusing printed strings and string variables*/
+{
+    string p p = "pillow"
+    print(p)
+    print(" is ")
+    print("pillow")

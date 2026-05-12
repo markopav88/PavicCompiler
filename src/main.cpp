@@ -6,6 +6,7 @@
 #include "semantic_usage.hpp"
 #include "symbol_table.hpp"
 #include "codegen/codegen.hpp"
+#include "optimizer.hpp"
 #include "lexer.hpp"
 #include "parser.hpp"
 #include "source.hpp"
@@ -413,6 +414,12 @@ int main(int argc, char** argv) {
     }
 
     const std::size_t errorsAfterType = diagnostics.errorCount();
+
+    for (std::size_t i = 0; i < astPrograms.size(); ++i) {
+        if (astPrograms[i] && typeOkPerProgram[i]) {
+            pavic::optimizeAstProgram(*astPrograms[i], !quiet);
+        }
+    }
 
     for (std::size_t i = 0; i < astPrograms.size(); ++i) {
         if (astPrograms[i] && typeOkPerProgram[i]) {

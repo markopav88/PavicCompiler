@@ -1,0 +1,27 @@
+/*v is everything*/
+{
+int v
+v = 2
+{
+print(v)
+string v
+print(v)
+v = "v"
+print(v)
+{
+boolean v
+v = true
+print (v)
+}
+}
+string b
+b = "b"
+if (v == 2) {
+print(b)
+}
+/*type mismatch error*/
+{ v = "w"
+{ v = false
+}
+}
+}$

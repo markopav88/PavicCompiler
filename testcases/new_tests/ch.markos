@@ -1,0 +1,6 @@
+{
+  boolean t t = (true == true)
+  print(t)
+  boolean f f = (true != true)
+  print(f)
+}$

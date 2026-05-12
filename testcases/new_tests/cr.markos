@@ -1,0 +1,7 @@
+/*compare strings*/
+{
+  string a a="mom"
+  pirnt(a)
+  boolean b = (a == "mom")
+  print(b)
+}

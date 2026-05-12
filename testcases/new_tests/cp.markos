@@ -1,0 +1,10 @@
+/*string shit*/
+{
+  string g 
+  print(g)
+}$
+{
+  string b 
+  b = "word"
+  print(b)
+}$

@@ -1,0 +1,16 @@
+/*nested loop*/
+{       
+  int o o=0
+  int i
+  while (o != 3){
+    i = 0
+    while (i != 3){
+      print(" inner")
+      print(i)
+      print(" outer")
+      print(i)
+      {i = 1+i}
+    }
+  o = 1+o
+  }
+}$

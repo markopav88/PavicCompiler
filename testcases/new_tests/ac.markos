@@ -1,0 +1,6 @@
+/*digit error*/
+{ 
+int e
+e = 99
+print(e)
+}$

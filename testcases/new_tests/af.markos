@@ -1,0 +1,8 @@
+/* Many programs?*/
+{{}}$
+{print(a)}$
+{
+  boolean f
+  f = (1 == 1)
+  print(f)
+}

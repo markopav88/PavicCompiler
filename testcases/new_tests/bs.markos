@@ -1,0 +1,18 @@
+/* print scope */
+{ 
+  int a int b int c
+  a=8         c=7
+  {
+    boolean f boolean g boolean h 
+    {
+      string q string r string s 
+      f= true g =false 
+      {
+        r= "hello"
+        s = r
+      }
+    }
+    h = (b!=c)
+    print(g)
+  }
+}$

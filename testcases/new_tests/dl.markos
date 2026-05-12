@@ -1,0 +1,6 @@
+/*true*/
+        boolean t t=true
+        if (t==true) {
+            int a a=9
+            print(a)
+        }

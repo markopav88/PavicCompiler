@@ -1,0 +1,6 @@
+/*compare boolean constants*/
+{
+  print("true")
+    print((true != false))
+    print((true == true))
+    print((false == false))

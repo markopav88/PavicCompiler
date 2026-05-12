@@ -1,0 +1,5 @@
+{
+  int h
+  h = 4
+  print (1+h)
+  string g

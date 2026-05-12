@@ -1,0 +1,12 @@
+/*print booleans*/
+{
+  boolean f f = false
+  boolean t t = true
+  {
+    print((2!=3))
+    print((true==false))
+    print(true)
+    print(t)
+    print((f==false))
+    print((t!=t))
+    print(8)

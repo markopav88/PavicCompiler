@@ -1,0 +1,12 @@
+/*more bools*/
+{ 
+boolean y y = false
+if (true==y) {
+  print("y is true") }
+if (y==false) {
+  print("y is false") }
+}$
+{
+if (7+7+7==3+3+3+3+3+3+3){
+  print("twenty one")
+}}$

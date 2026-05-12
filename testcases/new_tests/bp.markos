@@ -1,0 +1,5 @@
+{
+int a a=8 a=7 a=6 
+boolean b b=(8+9 != 9)
+a = (b != false) /*error*/
+}$

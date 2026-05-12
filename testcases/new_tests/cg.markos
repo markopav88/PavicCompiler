@@ -1,0 +1,7 @@
+/*test inequality*/
+{
+  boolean e e = (2==2)
+  print(e)
+  boolean w w = (true!=e)
+  print(w)
+}$

@@ -1,0 +1,8 @@
+/*immediately no*/
+{
+int z z = 8
+while(z != 8) {
+print(z)
+}$
+{
+}

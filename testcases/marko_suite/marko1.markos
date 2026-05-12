@@ -1,0 +1,12 @@
+/*aa aa aa lot*/
+{
+while true {
+print(" a")
+if true {
+print("a")
+}
+if false {
+print("b")
+}
+}
+}$

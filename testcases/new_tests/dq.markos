@@ -1,0 +1,9 @@
+/*if in a while*/
+{
+  int r r = 2
+  while(r != 8+8) {
+    if (r == 8) {
+      print("half way")
+    }
+  }
+}$

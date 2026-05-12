@@ -1,0 +1,4 @@
+/*should give errors */
+print(((true!=false) == 1+2))
+print(("e"!=false))
+}$

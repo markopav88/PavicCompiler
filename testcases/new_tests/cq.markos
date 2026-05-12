@@ -1,0 +1,7 @@
+/*print two strings*/
+{
+  print("hello")
+  string w 
+  w = " world"
+  print(w)
+}$

@@ -1,0 +1,4 @@
+print(" false")
+    print((true == false))
+    print((false != false))
+    print((false == true))
