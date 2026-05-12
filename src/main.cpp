@@ -428,6 +428,7 @@ int main(int argc, char** argv) {
     }
 
     const std::size_t errorsAfterUsage = diagnostics.errorCount();
+    const bool canRunCodegen = (errorsAfterUsage == errorsBeforeSemantic);
 
     pavic::codegen::CodeGenTarget codegenTarget{};
     if (emulator) {
@@ -436,30 +437,32 @@ int main(int argc, char** argv) {
 
     std::vector<std::vector<std::uint8_t>> objectCodePerProgram;
     objectCodePerProgram.resize(astPrograms.size());
-    if (!quiet) {
-        std::cout << "Begin CODE GENERATION\n\n";
-    }
-    for (std::size_t i = 0; i < astPrograms.size(); ++i) {
-        if (astPrograms[i] && typeOkPerProgram[i]) {
-            pavic::generate6502Program(
-                *astPrograms[i],
-                sourceMap,
-                tokens,
-                symbolTables[i],
-                codegenTarget,
-                diagnostics,
-                !quiet,
-                objectCodePerProgram[i]
-            );
+    if (canRunCodegen) {
+        if (!quiet) {
+            std::cout << "Begin CODE GENERATION\n\n";
         }
-    }
-    if (!quiet) {
-        const std::size_t codegenErrors = diagnostics.errorCount() - errorsAfterUsage;
-        std::cout << "\nCODE GEN complete with " << codegenErrors << " errors\n\n";
+        for (std::size_t i = 0; i < astPrograms.size(); ++i) {
+            if (astPrograms[i] && typeOkPerProgram[i]) {
+                pavic::generate6502Program(
+                    *astPrograms[i],
+                    sourceMap,
+                    tokens,
+                    symbolTables[i],
+                    codegenTarget,
+                    diagnostics,
+                    !quiet,
+                    objectCodePerProgram[i]
+                );
+            }
+        }
+        if (!quiet) {
+            const std::size_t codegenErrors = diagnostics.errorCount() - errorsAfterUsage;
+            std::cout << "\nCODE GEN complete with " << codegenErrors << " errors\n\n";
+        }
     }
 
     std::vector<std::uint8_t> linkedObject;
-    if (!outputPath.empty() && diagnostics.errorCount() == errorsBeforeSemantic) {
+    if (!outputPath.empty() && canRunCodegen && diagnostics.errorCount() == errorsBeforeSemantic) {
         for (std::size_t i = 0; i < objectCodePerProgram.size(); ++i) {
             const auto& chunk = objectCodePerProgram[i];
             if (!chunk.empty()) {
