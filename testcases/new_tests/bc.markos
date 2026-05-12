@@ -1,0 +1,11 @@
+/*back and forth*/
+{
+ string i
+ i = "string"
+ {
+  /*i = "change global"*/
+  int i 
+  i = 6
+ }
+ i = "still string out here"
+} $

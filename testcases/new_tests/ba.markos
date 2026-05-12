@@ -1,0 +1,8 @@
+/*modify a global variable
+{
+  int g 
+  {
+    g = 8
+  }
+  print(g)
+}$

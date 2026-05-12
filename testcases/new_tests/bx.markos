@@ -1,0 +1,7 @@
+/*int decl + assignment*/
+{
+  int e
+  e = 2
+  e = 4
+  e = 6
+}$

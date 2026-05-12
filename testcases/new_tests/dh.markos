@@ -1,0 +1,8 @@
+/*if testing */
+{
+    if (true!=true) {
+        print("aidan ")
+        {int a a = 9}
+    }
+    print("done")
+}$

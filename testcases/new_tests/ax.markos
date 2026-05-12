@@ -1,0 +1,11 @@
+{
+ int a {
+  boolean b {
+   string c {
+    a = 5 + 8 + "abs"
+    b = (false != (8==0))
+    c = "true" }
+   print(c) }
+  print(b) }
+ print(a)
+}$

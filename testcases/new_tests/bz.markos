@@ -1,0 +1,15 @@
+/*changing numbers and scopes and stuff*/
+{
+  int a a=3 print(a) /*3*/
+  int b b=6
+  a=b print(a) /*6*/
+  {
+    a=4 
+    print(a) /*4*/
+    int b b=8
+    a=b print(b) /*8*/
+  }
+  print(b) /*6*/
+  print(a) /*8*/
+  a=0 print(a) /*0*/
+}$

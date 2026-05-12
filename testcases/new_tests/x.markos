@@ -1,0 +1,7 @@
+{
+/*this is a weird one*/
+int a
+a = 9
+/*oops!$*/
+print(a)
+}

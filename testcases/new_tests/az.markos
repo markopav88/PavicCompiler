@@ -1,0 +1,12 @@
+/*test inheritance*/ 
+{
+int y
+y = 7
+  {
+  string y                   /*commenting these two lines*/
+  y = "now we are a string"  /*should allow code to work */
+    { 
+    y = 9                    /*default: this should fail */
+    }
+  }
+}$

@@ -1,0 +1,25 @@
+/* counting in base n */
+{
+int a a = 0
+int b b = 0
+int c c = 0
+int n n = 2 /*count in base 2*/
+/*try 3, it takes awhile*/
+print("base ")
+print(n)
+while (a != n) {
+while (b != n) {
+while (c != n) {
+print(" ")
+print(a)
+print(b)
+print(c)
+c = 1 + c
+}
+c = 0
+b = 1 + b
+}
+b = 0
+a = 1 + a
+}
+}$

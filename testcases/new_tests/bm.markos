@@ -1,0 +1,8 @@
+{
+/*works*/
+print((1+1 == 1))
+print((1 == 1+2))
+print((1+1 == 1+3))
+string y
+print(("e"!=y))
+print(((1==2) == (true!=false)))

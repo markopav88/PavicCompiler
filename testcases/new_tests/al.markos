@@ -1,0 +1,5 @@
+string t
+ g = "goodbye"
+ print (3+g)
+ print (4+w)
+}$

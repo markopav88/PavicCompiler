@@ -1,0 +1,1 @@
+{intaa=1{while(a!=5){a=1+aprint(a)}print(3+a)}}$

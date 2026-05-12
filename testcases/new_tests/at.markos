@@ -1,0 +1,6 @@
+/*overloaded boolean operations*/
+{
+    boolean a
+    a = true 
+    int b 
+    b = 6

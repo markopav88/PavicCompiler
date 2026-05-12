@@ -1,0 +1,4 @@
+/*addition as booleans*/
+{
+    print((4+5 == 9))
+    print((5+5 != 3+3+3+1))

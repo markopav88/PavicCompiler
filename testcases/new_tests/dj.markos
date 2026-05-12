@@ -1,0 +1,4 @@
+/*if math is wrong*/
+    if (2+2 != 4) {
+        print("what is real anymore")
+    }

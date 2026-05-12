@@ -1,0 +1,15 @@
+/*useage warnings*/
+{
+ string n /*never used*/
+ int a a=9
+ boolean u
+ if (a==8) {
+  print(a)
+  string e
+  e="io"
+ }
+ { 
+  string r r="init"
+ }
+ u = ("p" != "u")
+}$

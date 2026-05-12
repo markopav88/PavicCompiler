@@ -1,0 +1,17 @@
+{ 
+int r
+  {
+    string i i = "st"
+    int a
+    {
+      i = "stri"
+      int i i = 6
+      r = 9
+      /*t = "error"*/
+    }
+    i = "string"
+    a = 8
+    /*a = "not allowed"*/
+    print(r)
+  }
+} $

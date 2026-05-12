@@ -1,0 +1,8 @@
+while(h != 8) {
+      print(h)
+      h = 1+h
+      g = "bye"
+    }
+  }
+  print(g)
+}$

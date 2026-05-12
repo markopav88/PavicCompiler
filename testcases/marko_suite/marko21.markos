@@ -1,0 +1,35 @@
+/* static collides with heap */
+{
+string a
+a = "static area might collide
+into heap because i am filling the
+heap with data to cause that
+collision"
+string b
+b = "some work"
+string c
+string d
+string e
+string f
+string g
+string h
+string i
+string j
+string k
+string l
+string m
+string n
+string o
+string p
+string q
+string r
+string s
+string t
+string u
+string v
+string w
+string x
+string y
+string z
+print (b)
+}$

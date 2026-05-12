@@ -1,0 +1,7 @@
+while (a != n) {
+        while (b != n) {
+            while (c != n) {
+                print(" ")
+                print(a)
+                print(b)
+                print(c)

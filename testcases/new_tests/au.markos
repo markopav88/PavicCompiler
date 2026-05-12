@@ -1,0 +1,4 @@
+boolean c
+    c = ((a==false) != (6==b))
+    print(c)
+} $

@@ -1,0 +1,29 @@
+{
+ string a
+ string b
+
+ a = "alan"
+ b = "alan"
+ if (a == b) { print("EQ1") }      /* should print */
+
+ b = "marko"
+ if (a != b) { print("NEQ1") }     /* should print */
+
+ a = "marko"
+ if (a == b) { print("EQ2") }      /* should print */
+}$
+
+{
+ string a
+ string b
+
+ a = "alan"
+ b = "alan"
+ if (a == b) { print("EQ1") }      /* should print */
+
+ b = "marko"
+ if (a != b) { print("NEQ1") }     /* should print */
+
+ a = "marko"
+ if (a == b) { print("EQ2") }      /* should print */
+}$

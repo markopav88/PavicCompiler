@@ -1,0 +1,5 @@
+/*allow boolean Declaration*/    
+{
+boolean r 
+r= true
+}$
