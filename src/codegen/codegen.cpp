@@ -11,6 +11,7 @@
 #include <iostream>
 #include <iomanip>
 #include <map>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -110,6 +111,10 @@ public:
 
     void visitProgram(AstProgram& program) {
         codegenTrace(verbose_, map_, tokens_, program.span(), "Block");
+        planStringHeap(program);
+        if (diagnostics_.hasErrors()) {
+            return;
+        }
         // Reserve a stable byte that always stores 0; used for CPX-based predicates and unconditional BNE.
         buffer_.emitU8(kOpLdaImm);
         buffer_.emitU8(0x00);
@@ -178,7 +183,7 @@ public:
                 return false;
             }
             const std::uint16_t staticEnd = static_cast<std::uint16_t>(staticEndWide);
-            if (heapFloor_ != 0x0100u && staticEnd >= heapFloor_) {
+            if (heapBase_ != 0x0100u && staticEnd >= heapBase_) {
                 diagnostics_.addError(
                     "codegen: stack/heap collision in 256-byte memory image",
                     {1, 1},
@@ -186,6 +191,36 @@ public:
                 );
                 return false;
             }
+        }
+
+        return true;
+    }
+
+    bool materializeStringHeapInImage(std::vector<std::uint8_t>& image) {
+        for (const std::string& payload : emittedStringPayloads_) {
+            const auto it = stringPoolByPayload_.find(payload);
+            if (it == stringPoolByPayload_.end()) {
+                diagnostics_.addError(
+                    "codegen: internal error (string payload missing planned heap address)",
+                    {1, 1},
+                    "Report this compiler bug with the input program."
+                );
+                return false;
+            }
+            const std::uint16_t base = it->second;
+            const std::size_t need = static_cast<std::size_t>(base) + payload.size() + 1;
+            if (need > image.size()) {
+                diagnostics_.addError(
+                    "codegen: output image too small to materialize planned string heap bytes",
+                    {1, 1},
+                    "Use a fixed 256-byte image or reduce string heap requirements."
+                );
+                return false;
+            }
+            for (std::size_t i = 0; i < payload.size(); ++i) {
+                image[static_cast<std::size_t>(base) + i] = static_cast<std::uint8_t>(static_cast<unsigned char>(payload[i]));
+            }
+            image[static_cast<std::size_t>(base) + payload.size()] = 0x00;
         }
         return true;
     }
@@ -219,6 +254,103 @@ private:
 
     void codegenError(AstSpan span, std::string message, std::string hint) {
         diagnostics_.addError(std::move(message), locationAtSpan(map_, tokens_, span), std::move(hint));
+    }
+
+    void rememberStringPayload(const std::string& payload) {
+        if (stringPoolByPayload_.find(payload) == stringPoolByPayload_.end()) {
+            stringPoolByPayload_.emplace(payload, 0);
+            stringHeapOrder_.push_back(payload);
+        }
+    }
+
+    void collectStringLiteralsFromExpr(AstExpr& e) {
+        switch (e.nodeKind()) {
+        case AstNodeKind::LiteralString:
+            rememberStringPayload(stringPayloadFromLexeme(static_cast<AstLiteralString&>(e).lexeme()));
+            return;
+        case AstNodeKind::AddExpr: {
+            auto& a = static_cast<AstAddExpr&>(e);
+            collectStringLiteralsFromExpr(*a.left());
+            collectStringLiteralsFromExpr(*a.right());
+            return;
+        }
+        case AstNodeKind::BooleanExprWrapper:
+            collectStringLiteralsFromBoolean(*static_cast<AstBooleanExprWrapper&>(e).inner());
+            return;
+        default:
+            return;
+        }
+    }
+
+    void collectStringLiteralsFromBoolean(AstBooleanExpr& b) {
+        if (b.nodeKind() == AstNodeKind::BinaryBoolExpr) {
+            auto& cmp = static_cast<AstBinaryBoolExpr&>(b);
+            collectStringLiteralsFromExpr(*cmp.left());
+            collectStringLiteralsFromExpr(*cmp.right());
+        }
+    }
+
+    void collectStringLiteralsFromStatement(AstStatement& st) {
+        switch (st.nodeKind()) {
+        case AstNodeKind::PrintStatement:
+            collectStringLiteralsFromExpr(*static_cast<AstPrintStatement&>(st).expr());
+            return;
+        case AstNodeKind::AssignStatement:
+            collectStringLiteralsFromExpr(*static_cast<AstAssignStatement&>(st).expr());
+            return;
+        case AstNodeKind::WhileStatement: {
+            auto& w = static_cast<AstWhileStatement&>(st);
+            collectStringLiteralsFromBoolean(*w.condition());
+            collectStringLiteralsFromBlock(*w.body());
+            return;
+        }
+        case AstNodeKind::IfStatement: {
+            auto& i = static_cast<AstIfStatement&>(st);
+            collectStringLiteralsFromBoolean(*i.condition());
+            collectStringLiteralsFromBlock(*i.body());
+            return;
+        }
+        case AstNodeKind::BlockStatement:
+            collectStringLiteralsFromBlock(*static_cast<AstBlockStatement&>(st).block());
+            return;
+        default:
+            return;
+        }
+    }
+
+    void collectStringLiteralsFromBlock(AstBlock& block) {
+        if (!block.statements()) {
+            return;
+        }
+        for (auto& st : block.statements()->statements()) {
+            if (st) {
+                collectStringLiteralsFromStatement(*st);
+            }
+        }
+    }
+
+    void planStringHeap(AstProgram& program) {
+        stringPoolByPayload_.clear();
+        emittedStringPayloads_.clear();
+        stringHeapOrder_.clear();
+        heapBase_ = 0x0100;
+
+        collectStringLiteralsFromBlock(*program.block());
+        std::size_t total = 0;
+        for (const std::string& payload : stringHeapOrder_) {
+            total += payload.size() + 1;
+        }
+        if (total > 256) {
+            codegenError(program.span(), "codegen: string heap exceeds 256-byte memory image", "Reduce total string literal bytes.");
+            return;
+        }
+        const std::uint16_t base = static_cast<std::uint16_t>(0x0100u - total);
+        heapBase_ = base;
+        std::uint16_t cursor = base;
+        for (const std::string& payload : stringHeapOrder_) {
+            stringPoolByPayload_[payload] = cursor;
+            cursor = static_cast<std::uint16_t>(cursor + payload.size() + 1);
+        }
     }
 
     void visitBlock(AstBlock& block) {
@@ -489,8 +621,12 @@ private:
 
     bool emitStringPoolInit(const std::string& payload, AstSpan errorSpan, std::uint16_t& outBase) {
         const auto found = stringPoolByPayload_.find(payload);
-        if (found != stringPoolByPayload_.end()) {
-            outBase = found->second;
+        if (found == stringPoolByPayload_.end()) {
+            codegenError(errorSpan, "codegen: internal error (unplanned string payload)", "Report this compiler bug with the input program.");
+            return false;
+        }
+        outBase = found->second;
+        if (emittedStringPayloads_.find(payload) != emittedStringPayloads_.end()) {
             return true;
         }
         const std::size_t n = payload.size() + 1;
@@ -498,30 +634,7 @@ private:
             codegenError(errorSpan, "codegen: string literal is too long", "Shorten the string literal.");
             return false;
         }
-        if (n > heapNext_) {
-            codegenError(
-                errorSpan,
-                "codegen: heap overflow while placing string literal payload",
-                "Shorten string literals or reduce the number of distinct strings so heap allocations fit below $FF."
-            );
-            return false;
-        }
-        outBase = static_cast<std::uint16_t>(heapNext_ - n);
-        heapNext_ = outBase;
-        if (outBase < heapFloor_) {
-            heapFloor_ = outBase;
-        }
-        for (std::size_t i = 0; i < payload.size(); ++i) {
-            buffer_.emitU8(kOpLdaImm);
-            buffer_.emitU8(static_cast<std::uint8_t>(static_cast<unsigned char>(payload[i])));
-            buffer_.emitU8(kOpStaAbs);
-            buffer_.emitAddr16LE(static_cast<std::uint16_t>(outBase + static_cast<std::uint16_t>(i)));
-        }
-        buffer_.emitU8(kOpLdaImm);
-        buffer_.emitU8(0x00);
-        buffer_.emitU8(kOpStaAbs);
-        buffer_.emitAddr16LE(static_cast<std::uint16_t>(outBase + static_cast<std::uint16_t>(payload.size())));
-        stringPoolByPayload_.emplace(payload, outBase);
+        emittedStringPayloads_.insert(payload);
         return true;
     }
 
@@ -900,9 +1013,10 @@ private:
     codegen::CodeBuffer& buffer_;
     const std::vector<SymbolRecord>& symbols_;
     std::uint16_t zeroAddr_;
-    std::uint16_t heapNext_ = 0x0100;
-    std::uint16_t heapFloor_ = 0x0100;
+    std::uint16_t heapBase_ = 0x0100;
     std::map<std::string, std::uint16_t> stringPoolByPayload_;
+    std::set<std::string> emittedStringPayloads_;
+    std::vector<std::string> stringHeapOrder_;
     std::vector<DataAddrFixup> dataAddrFixups_;
     std::vector<DataImmLowFixup> dataImmLowFixups_;
     std::size_t nextTempPlaceholderId_ = 0;
@@ -973,6 +1087,9 @@ bool generate6502Program(
     }
 
     outObject = buffer.bytes();
+    if (!gen.materializeStringHeapInImage(outObject)) {
+        return diagnostics.errorCount() == errorsBefore;
+    }
     return diagnostics.errorCount() == errorsBefore;
 }
 
