@@ -7,7 +7,7 @@ PavicCompiler is a course compiler project written around the grammer Professor 
 
 - **Frontend**: lexer, parser, CST/AST construction, and semantic analysis (scope, type, and usage checks).
 - **IR Optimization**: AST-level optimizations (constant folding, propagation, dead code elimination, and bounded loop unrolling).
-- **Backend**: 6502 code generation for the class
+- **Backend**: Targeting 6502a machine code that executes on SvegOS
 
 The backend is intentionally constrained to the **Alan 6502 instruction subset** used in the project spec (for example `LDA`, `STA`, `ADC`, `LDX`, `LDY`, `CPX`, `BNE`, `INC`, `SYS`, `BRK`) and targets a compact 256-byte style memory image.
 
