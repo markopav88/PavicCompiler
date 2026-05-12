@@ -184,6 +184,14 @@ The frontend supports conservative source rewrites so we do more than report an 
 - attach `SUGGESTED FIX` rewrites in diagnostics
 - when `--fix` is enabled, automatically apply safe rewrites and re-run lex/parse
 
+Auto-fix coverage (current):
+- unterminated block comments (`/* ...` -> add `*/`)
+- unterminated or line-broken strings (insert missing `"`)
+- glued type declarations (`inta` -> `int a`, `stringz` -> `string z`)
+- case-normalized reserved words (`Print` -> `print`, etc.)
+- malformed operators (`!` -> `!=`, stray `/` -> start `/*`)
+- missing wrappers/tokens (missing `(` / `)` around `if`/`while`, missing `}` and trailing `$`)
+
 Goal:
 - recover from common mistakes without changing intended program meaning
 
