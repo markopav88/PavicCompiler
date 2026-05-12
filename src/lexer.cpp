@@ -1,5 +1,6 @@
 #include "lexer.hpp"
 
+#include <algorithm>
 #include <iostream>
 #include <string>
 
@@ -7,6 +8,17 @@ namespace {
 
 bool isSpace(char ch) {
     return ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r';
+}
+
+std::string toLowerAscii(std::string_view s) {
+    std::string out(s);
+    std::transform(out.begin(), out.end(), out.begin(), [](unsigned char c) {
+        if (c >= 'A' && c <= 'Z') {
+            return static_cast<char>(c - 'A' + 'a');
+        }
+        return static_cast<char>(c);
+    });
+    return out;
 }
 
 } // namespace
@@ -115,7 +127,8 @@ bool Lexer::trySkipBlockComment() {
     diagnostics_.addError(
         "unterminated block comment starting with `/*` (fatal lexer error)",
         map_.locationAt(start),
-        "Close the comment with `*/` before EOF. Lexing cannot reliably continue to parser readiness with an open comment."
+        "Close the comment with `*/` before EOF. Lexing cannot reliably continue to parser readiness with an open comment.",
+        SourceRewrite{text_.size(), text_.size(), std::string("*/")}
     );
     return true;
 }
@@ -135,7 +148,8 @@ void Lexer::lexString(std::vector<Token>& tokens) {
             diagnostics_.addError(
                 "newline character is not allowed inside a string literal",
                 map_.locationAt(pos_),
-                "Close the string with `\"` before starting a new line, or remove the line break."
+                "Close the string with `\"` before starting a new line, or remove the line break.",
+                SourceRewrite{pos_, pos_, std::string("\"")}
             );
             emitToken(tokens, TokenKind::StringLiteral, start, pos_);
             return;
@@ -146,7 +160,8 @@ void Lexer::lexString(std::vector<Token>& tokens) {
     diagnostics_.addError(
         "unterminated string literal starting with `\"`",
         map_.locationAt(start),
-        "Add a closing `\"` before the end of the file."
+        "Add a closing `\"` before the end of the file.",
+        SourceRewrite{text_.size(), text_.size(), std::string("\"")}
     );
     emitToken(tokens, TokenKind::StringLiteral, start, pos_);
 }
@@ -205,10 +220,30 @@ void Lexer::lexWord(std::vector<Token>& tokens) {
         return;
     }
 
+    std::optional<SourceRewrite> fix;
+    const auto maybeSplitTypeKeyword = [&](std::string_view kw) -> bool {
+        if (word.size() == kw.size() + 1 && word.substr(0, kw.size()) == kw) {
+            const char suffix = word.back();
+            if (suffix >= 'a' && suffix <= 'z') {
+                fix = SourceRewrite{start, pos_, std::string(kw) + " " + std::string(1, suffix)};
+                return true;
+            }
+        }
+        return false;
+    };
+    if (!maybeSplitTypeKeyword("int") && !maybeSplitTypeKeyword("string") && !maybeSplitTypeKeyword("boolean")) {
+        const std::string lower = toLowerAscii(word);
+        if (lower == "print" || lower == "while" || lower == "if" || lower == "int" || lower == "string" ||
+            lower == "boolean" || lower == "true" || lower == "false") {
+            fix = SourceRewrite{start, pos_, lower};
+        }
+    }
+
     diagnostics_.addError(
         "invalid identifier or unknown keyword",
         map_.locationAt(start),
-        "Identifiers must be a single lowercase letter `a` through `z`. Reserved words like `print` and `int` must match exactly."
+        "Identifiers must be a single lowercase letter `a` through `z`. Reserved words like `print` and `int` must match exactly.",
+        std::move(fix)
     );
     emitToken(tokens, TokenKind::Identifier, start, pos_);
 }
@@ -320,7 +355,8 @@ void Lexer::lexAll(std::vector<Token>& tokens) {
                 diagnostics_.addError(
                     "unexpected `!` — `!=` is the only operator that starts with `!`",
                     map_.locationAt(pos_),
-                    "Use `!=` for inequality, or remove the stray `!`."
+                    "Use `!=` for inequality, or remove the stray `!`.",
+                    SourceRewrite{pos_, pos_ + 1, std::string("!=")}
                 );
                 ++pos_;
             }
@@ -331,7 +367,8 @@ void Lexer::lexAll(std::vector<Token>& tokens) {
             diagnostics_.addError(
                 "stray `/` — comments must begin with `/*`",
                 map_.locationAt(pos_),
-                "Start a block comment with `/*` or remove the `/`."
+                "Start a block comment with `/*` or remove the `/`.",
+                SourceRewrite{pos_, pos_, std::string("*")}
             );
             ++pos_;
             continue;

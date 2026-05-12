@@ -101,6 +101,9 @@ bool Parser::expect(TokenKind kind, const std::string& context) {
     std::optional<SourceRewrite> fix;
     if (kind == TokenKind::RightParen) {
         fix.emplace(SourceRewrite{current.offset, current.offset, std::string(")")});
+    } else if (kind == TokenKind::RightBrace &&
+               (current.kind == TokenKind::EndOfFile || current.kind == TokenKind::DollarEop)) {
+        fix.emplace(SourceRewrite{current.offset, current.offset, std::string("}")});
     } else if (kind == TokenKind::DollarEop && current.kind == TokenKind::EndOfFile) {
         fix.emplace(SourceRewrite{current.offset, current.offset, std::string("$")});
     }
@@ -236,10 +239,16 @@ std::unique_ptr<CstBinaryBoolExpr> Parser::parseBooleanParenExpr() {
         op = CstBinaryBoolExpr::Op::NotEqual;
         advance();
     } else {
+        std::optional<SourceRewrite> fix;
+        if (peek().kind == TokenKind::RightParen) {
+            // In this language, `(x)` in boolean position is intended as `(x == true)`.
+            fix = SourceRewrite{peek().offset, peek().offset, std::string("==true")};
+        }
         diagnostics_.addError(
             "expected `==` or `!=` inside BooleanExpr",
             map_.locationAt(peek().offset),
-            "A parenthesized boolean comparison must use `==` or `!=` between the two sub-expressions."
+            "A parenthesized boolean comparison must use `==` or `!=` between the two sub-expressions.",
+            std::move(fix)
         );
         return nullptr;
     }
@@ -367,6 +376,35 @@ std::unique_ptr<CstWhileStatement> Parser::parseWhileStatement() {
     if (!expect(TokenKind::KwWhile, "WhileStatement")) {
         return nullptr;
     }
+    // Conservative fix: allow `while a == b { ... }` by inserting missing parentheses.
+    if (peek().kind != TokenKind::LeftParen && peek().kind != TokenKind::KwTrue && peek().kind != TokenKind::KwFalse) {
+        const std::size_t boolStart = index_;
+        std::size_t scan = boolStart;
+        while (scan < tokens_.size()) {
+            const TokenKind k = tokens_[scan].kind;
+            if (k == TokenKind::LeftBrace || k == TokenKind::EndOfFile || k == TokenKind::DollarEop) {
+                break;
+            }
+            ++scan;
+        }
+        if (scan > boolStart) {
+            const Token& first = tokens_[boolStart];
+            const Token& endTok = tokens_[scan];
+            diagnostics_.addError(
+                "missing parentheses around `while` boolean expression",
+                map_.locationAt(first.offset),
+                "Wrap the condition as `while ( ... ) { ... }`.",
+                SourceRewrite{first.offset, first.offset, std::string("(")}
+            );
+            diagnostics_.addError(
+                "missing closing `)` before `while` block",
+                map_.locationAt(endTok.offset),
+                "Insert `)` before `{` in the while statement.",
+                SourceRewrite{endTok.offset, endTok.offset, std::string(")")}
+            );
+            return nullptr;
+        }
+    }
     std::unique_ptr<CstBooleanExpr> cond = parseBooleanExpr();
     if (!cond) {
         return nullptr;
@@ -383,6 +421,35 @@ std::unique_ptr<CstIfStatement> Parser::parseIfStatement() {
     trace("IfStatement");
     if (!expect(TokenKind::KwIf, "IfStatement")) {
         return nullptr;
+    }
+    // Conservative fix: allow `if a == b { ... }` by inserting missing parentheses.
+    if (peek().kind != TokenKind::LeftParen && peek().kind != TokenKind::KwTrue && peek().kind != TokenKind::KwFalse) {
+        const std::size_t boolStart = index_;
+        std::size_t scan = boolStart;
+        while (scan < tokens_.size()) {
+            const TokenKind k = tokens_[scan].kind;
+            if (k == TokenKind::LeftBrace || k == TokenKind::EndOfFile || k == TokenKind::DollarEop) {
+                break;
+            }
+            ++scan;
+        }
+        if (scan > boolStart) {
+            const Token& first = tokens_[boolStart];
+            const Token& endTok = tokens_[scan];
+            diagnostics_.addError(
+                "missing parentheses around `if` boolean expression",
+                map_.locationAt(first.offset),
+                "Wrap the condition as `if ( ... ) { ... }`.",
+                SourceRewrite{first.offset, first.offset, std::string("(")}
+            );
+            diagnostics_.addError(
+                "missing closing `)` before `if` block",
+                map_.locationAt(endTok.offset),
+                "Insert `)` before `{` in the if statement.",
+                SourceRewrite{endTok.offset, endTok.offset, std::string(")")}
+            );
+            return nullptr;
+        }
     }
     std::unique_ptr<CstBooleanExpr> cond = parseBooleanExpr();
     if (!cond) {
