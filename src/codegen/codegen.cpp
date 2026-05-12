@@ -11,7 +11,6 @@
 #include <iostream>
 #include <iomanip>
 #include <map>
-#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -197,7 +196,7 @@ public:
     }
 
     bool materializeStringHeapInImage(std::vector<std::uint8_t>& image) {
-        for (const std::string& payload : emittedStringPayloads_) {
+        for (const std::string& payload : plannedStringPayloads_) {
             const auto it = stringPoolByPayload_.find(payload);
             if (it == stringPoolByPayload_.end()) {
                 diagnostics_.addError(
@@ -234,7 +233,6 @@ private:
         std::size_t operandOffset = 0;
         std::uint16_t address = 0;
     };
-
     void emitDataAddr16(std::uint16_t addr) {
         const std::size_t off = buffer_.size();
         buffer_.emitAddr16LE(addr);
@@ -259,7 +257,7 @@ private:
     void rememberStringPayload(const std::string& payload) {
         if (stringPoolByPayload_.find(payload) == stringPoolByPayload_.end()) {
             stringPoolByPayload_.emplace(payload, 0);
-            stringHeapOrder_.push_back(payload);
+            plannedStringPayloads_.push_back(payload);
         }
     }
 
@@ -330,14 +328,13 @@ private:
     }
 
     void planStringHeap(AstProgram& program) {
+        plannedStringPayloads_.clear();
         stringPoolByPayload_.clear();
-        emittedStringPayloads_.clear();
-        stringHeapOrder_.clear();
         heapBase_ = 0x0100;
 
         collectStringLiteralsFromBlock(*program.block());
         std::size_t total = 0;
-        for (const std::string& payload : stringHeapOrder_) {
+        for (const std::string& payload : plannedStringPayloads_) {
             total += payload.size() + 1;
         }
         if (total > 256) {
@@ -347,7 +344,7 @@ private:
         const std::uint16_t base = static_cast<std::uint16_t>(0x0100u - total);
         heapBase_ = base;
         std::uint16_t cursor = base;
-        for (const std::string& payload : stringHeapOrder_) {
+        for (const std::string& payload : plannedStringPayloads_) {
             stringPoolByPayload_[payload] = cursor;
             cursor = static_cast<std::uint16_t>(cursor + payload.size() + 1);
         }
@@ -620,21 +617,12 @@ private:
     }
 
     bool emitStringPoolInit(const std::string& payload, AstSpan errorSpan, std::uint16_t& outBase) {
-        const auto found = stringPoolByPayload_.find(payload);
-        if (found == stringPoolByPayload_.end()) {
+        const auto it = stringPoolByPayload_.find(payload);
+        if (it == stringPoolByPayload_.end()) {
             codegenError(errorSpan, "codegen: internal error (unplanned string payload)", "Report this compiler bug with the input program.");
             return false;
         }
-        outBase = found->second;
-        if (emittedStringPayloads_.find(payload) != emittedStringPayloads_.end()) {
-            return true;
-        }
-        const std::size_t n = payload.size() + 1;
-        if (n > 0xFFFF) {
-            codegenError(errorSpan, "codegen: string literal is too long", "Shorten the string literal.");
-            return false;
-        }
-        emittedStringPayloads_.insert(payload);
+        outBase = it->second;
         return true;
     }
 
@@ -893,6 +881,9 @@ private:
         if (op == AstBinaryBoolExpr::Op::Equal) {
             return true;
         }
+
+        // Invert Z for `!=`: after this, Z=1 means not equal.
+        const SourceLocation errLoc = locationAtSpan(map_, tokens_, b.span());
         const std::size_t bneNotEq = buffer_.size();
         buffer_.emitU8(kOpBne);
         buffer_.emitU8(0x00);
@@ -906,7 +897,6 @@ private:
         buffer_.emitU8(kOpCpxAbs);
         emitDataAddr16(zeroAddr_);
         const std::size_t doneLabel = buffer_.size();
-        const SourceLocation errLoc = locationAtSpan(map_, tokens_, b.span());
         patchBranchRel8(buffer_, bneNotEq, notEqLabel, diagnostics_, errLoc);
         patchBranchRel8(buffer_, bneSkipNotEq, doneLabel, diagnostics_, errLoc);
         return true;
@@ -1014,9 +1004,8 @@ private:
     const std::vector<SymbolRecord>& symbols_;
     std::uint16_t zeroAddr_;
     std::uint16_t heapBase_ = 0x0100;
+    std::vector<std::string> plannedStringPayloads_;
     std::map<std::string, std::uint16_t> stringPoolByPayload_;
-    std::set<std::string> emittedStringPayloads_;
-    std::vector<std::string> stringHeapOrder_;
     std::vector<DataAddrFixup> dataAddrFixups_;
     std::vector<DataImmLowFixup> dataImmLowFixups_;
     std::size_t nextTempPlaceholderId_ = 0;
