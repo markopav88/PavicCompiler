@@ -11,6 +11,25 @@ PavicCompiler is a course compiler project written around the grammer Professor 
 
 The backend is intentionally constrained to the **Alan 6502 instruction subset** used in the project spec (for example `LDA`, `STA`, `ADC`, `LDX`, `LDY`, `CPX`, `BNE`, `INC`, `SYS`, `BRK`) and targets a compact 256-byte style memory image.
 
+## Executable Image Layout (256 Bytes)
+
+Behind the scenes, each compiled program is emitted as a single executable image with exactly 256 bytes of code and data.
+
+- **Code (text section)**:
+  - stores machine opcodes
+  - execution begins at `0x00`
+  - grows upward toward `0xFF`
+- **Static area (stack-like region)**:
+  - stores static variables and temporary slots (`int`, `boolean`, string pointers)
+  - begins immediately after emitted code
+  - grows upward toward `0xFF`
+- **Heap (dynamic/reference region)**:
+  - stores dynamic string bytes that static pointers refer to
+  - begins at `0xFF`
+  - grows downward toward `0x00`
+
+Code generation enforces collision checks between the upward-growing static region and downward-growing heap region so programs fail safely when memory does not fit.
+
 ## Language Grammar
 
 ```text
