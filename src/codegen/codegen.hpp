@@ -15,7 +15,7 @@ struct SymbolRecord;
 class DiagnosticBag;
 
 /// Walks `program` in the same block/statement order as scope/type passes and appends 6502a bytes to
-/// `outObject`. Uses `symbols` to reserve RAM for declarations (`int` only for now).
+/// `outObject`. Uses `symbols` to reserve RAM for declarations.
 /// Returns true iff no new errors were added to `diagnostics`.
 bool generate6502Program(
     AstProgram& program,

@@ -10,6 +10,7 @@
 
 #include <iostream>
 #include <iomanip>
+#include <map>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -58,6 +59,13 @@ void codegenTrace(bool verbose, const SourceMap& map, const std::vector<Token>& 
     }
 }
 
+std::string stringPayloadFromLexeme(const std::string& lex) {
+    if (lex.size() >= 2 && lex.front() == '"' && lex.back() == '"') {
+        return lex.substr(1, lex.size() - 2);
+    }
+    return lex;
+}
+
 void patchBranchRel8(
     codegen::CodeBuffer& buffer,
     std::size_t branchOpcodeOffset,
@@ -87,7 +95,8 @@ public:
         bool verbose,
         codegen::MemoryLayout& layout,
         const codegen::CodeGenTarget& target,
-        codegen::CodeBuffer& buffer
+        codegen::CodeBuffer& buffer,
+        const std::vector<SymbolRecord>& symbols
     )
         : map_(map),
           tokens_(tokens),
@@ -96,6 +105,7 @@ public:
           layout_(layout),
           target_(target),
           buffer_(buffer),
+          symbols_(symbols),
           zeroAddr_(layout_.allocateAnonymous(1)) {}
 
     void visitProgram(AstProgram& program) {
@@ -150,17 +160,31 @@ public:
                 return false;
             }
             const std::uint16_t relocated = static_cast<std::uint16_t>(relocatedWide);
-            if (relocated > 0xFF) {
-                diagnostics_.addError(
-                    "codegen: relocated string pointer no longer fits in 8-bit Y immediate",
-                    {1, 1},
-                    "Program code/data exceeded zero page; use a 16-bit pointer convention for syscall #2."
-                );
-                return false;
-            }
             buffer_.patchU8(fx.operandOffset, static_cast<std::uint8_t>(relocated & 0xFF));
             if (verbose_) {
                 std::cout << "CODE GEN backpatch T*low @" << fx.operandOffset << " => $" << hexAddr(relocated & 0xFF) << "\n";
+            }
+        }
+
+        const std::uint16_t logicalNext = layout_.nextFreeAddress();
+        if (logicalNext != 0) {
+            const std::uint32_t staticEndWide = static_cast<std::uint32_t>(logicalNext - 1u) + delta;
+            if (staticEndWide > 0xFFu) {
+                diagnostics_.addError(
+                    "codegen: static stack exceeds 256-byte memory image",
+                    {1, 1},
+                    "Reduce variables/temporaries or generated code size so static addresses stay within $00..$FF."
+                );
+                return false;
+            }
+            const std::uint16_t staticEnd = static_cast<std::uint16_t>(staticEndWide);
+            if (heapFloor_ != 0x0100u && staticEnd >= heapFloor_) {
+                diagnostics_.addError(
+                    "codegen: stack/heap collision in 256-byte memory image",
+                    {1, 1},
+                    "Reduce code size, variable/temporary pressure, or total string heap usage."
+                );
+                return false;
             }
         }
         return true;
@@ -251,6 +275,22 @@ private:
             emitPrintStringLiteral(static_cast<AstLiteralString&>(*expr), st.span());
             return;
         }
+        if (expr->nodeKind() == AstNodeKind::IdentifierExpr) {
+            auto& id = static_cast<AstIdentifierExpr&>(*expr);
+            if (!id.hasResolvedDeclScope()) {
+                codegenError(expr->span(), "codegen: internal error (identifier missing resolved scope)", "Re-run scope analysis.");
+                return;
+            }
+            const std::string t = lookupDeclType(id.name(), id.resolvedDeclScopeId());
+            if (t == "string") {
+                const codegen::VarKey key{id.name(), id.resolvedDeclScopeId()};
+                const std::uint16_t ptrAddr = layout_.addressOf(key);
+                buffer_.emitU8(kOpLdyAbs);
+                emitDataAddr16(ptrAddr);
+                emitSysCallStringPrint();
+                return;
+            }
+        }
         if (!emitIntExpr(*expr, ExprTarget::RegisterY)) {
             return;
         }
@@ -280,19 +320,9 @@ private:
     /// String literal: emit `LDA #byte` / `STA abs` for each character + trailing `$00`, then syscall `#02`
     /// with **Y = low 8 bits of base** (assumes high byte is `$00`; fails if `base >= 256`).
     void emitPrintStringLiteral(AstLiteralString& lit, AstSpan printSpan) {
-        const std::string& lex = lit.lexeme();
-        const std::size_t n = lex.size() + 1;
-        if (n > 0xFFFF) {
-            codegenError(printSpan, "codegen: string literal is too long", "Shorten the string literal.");
-            return;
-        }
-        const std::uint16_t base = layout_.allocateAnonymous(n);
-        if (base >= 256) {
-            codegenError(
-                printSpan,
-                "codegen: string literal would reside at address >= $0100; this emitter only supports `LDY #imm` low-byte pointers for syscall #2",
-                "Use a smaller program (fewer variables/temporaries) so the string pool stays in zero page ($00–$FF), or extend the generator with a 16-bit pointer convention."
-            );
+        const std::string payload = stringPayloadFromLexeme(lit.lexeme());
+        std::uint16_t base = 0;
+        if (!emitStringPoolInit(payload, printSpan, base)) {
             return;
         }
         codegenTrace(
@@ -302,19 +332,8 @@ private:
             lit.span(),
             "PrintStatement (string: emit RAM init at $" + hexAddr(base) + " then syscall #2)"
         );
-        for (std::size_t i = 0; i < lex.size(); ++i) {
-            buffer_.emitU8(kOpLdaImm);
-            buffer_.emitU8(static_cast<std::uint8_t>(static_cast<unsigned char>(lex[i])));
-            buffer_.emitU8(kOpStaAbs);
-            emitDataAddr16(static_cast<std::uint16_t>(base + static_cast<std::uint16_t>(i)));
-        }
-        buffer_.emitU8(kOpLdaImm);
-        buffer_.emitU8(0x00);
-        buffer_.emitU8(kOpStaAbs);
-        emitDataAddr16(static_cast<std::uint16_t>(base + static_cast<std::uint16_t>(lex.size())));
-
         buffer_.emitU8(kOpLdyImm);
-        emitDataImmLow(base);
+        buffer_.emitU8(static_cast<std::uint8_t>(base & 0xFF));
         emitSysCallStringPrint();
     }
 
@@ -397,6 +416,15 @@ private:
             codegenError(st.span(), "codegen: internal error (assignment LHS missing resolved scope)", "Re-run scope analysis.");
             return;
         }
+        const std::string lhsType = lookupDeclType(st.name(), st.lhsResolvedDeclScopeId());
+        if (lhsType.empty()) {
+            codegenError(st.span(), "codegen: missing symbol table entry for assignment target", "Re-run scope analysis.");
+            return;
+        }
+        if (lhsType == "string") {
+            visitAssignString(st);
+            return;
+        }
         if (!emitIntExpr(*st.expr(), ExprTarget::Accumulator)) {
             return;
         }
@@ -404,6 +432,106 @@ private:
         const std::uint16_t addr = layout_.addressOf(key);
         buffer_.emitU8(kOpStaAbs);
         emitDataAddr16(addr);
+    }
+
+    void visitAssignString(AstAssignStatement& st) {
+        AstExpr* rhs = st.expr();
+        if (!rhs) {
+            codegenError(st.span(), "codegen: internal error (assignment missing RHS)", "");
+            return;
+        }
+        const codegen::VarKey dstKey{st.name(), st.lhsResolvedDeclScopeId()};
+        const std::uint16_t dstAddr = layout_.addressOf(dstKey);
+
+        if (rhs->nodeKind() == AstNodeKind::LiteralString) {
+            auto& lit = static_cast<AstLiteralString&>(*rhs);
+            const std::string payload = stringPayloadFromLexeme(lit.lexeme());
+            std::uint16_t base = 0;
+            if (!emitStringPoolInit(payload, st.span(), base)) {
+                return;
+            }
+            buffer_.emitU8(kOpLdaImm);
+            buffer_.emitU8(static_cast<std::uint8_t>(base & 0xFF));
+            buffer_.emitU8(kOpStaAbs);
+            emitDataAddr16(dstAddr);
+            return;
+        }
+        if (rhs->nodeKind() == AstNodeKind::IdentifierExpr) {
+            auto& id = static_cast<AstIdentifierExpr&>(*rhs);
+            if (!id.hasResolvedDeclScope()) {
+                codegenError(rhs->span(), "codegen: internal error (identifier missing resolved scope)", "Re-run scope analysis.");
+                return;
+            }
+            const std::string rhsType = lookupDeclType(id.name(), id.resolvedDeclScopeId());
+            if (rhsType != "string") {
+                codegenError(
+                    rhs->span(),
+                    "codegen: string variable may only be assigned a string literal or another `string` variable",
+                    "The type checker should have caught this; report a compiler bug if it did not."
+                );
+                return;
+            }
+            const codegen::VarKey srcKey{id.name(), id.resolvedDeclScopeId()};
+            const std::uint16_t srcAddr = layout_.addressOf(srcKey);
+            buffer_.emitU8(kOpLdaAbs);
+            emitDataAddr16(srcAddr);
+            buffer_.emitU8(kOpStaAbs);
+            emitDataAddr16(dstAddr);
+            return;
+        }
+
+        codegenError(
+            rhs->span(),
+            "codegen: unsupported RHS for `string` assignment",
+            "Use a string literal `\"...\"` or another `string` variable."
+        );
+    }
+
+    bool emitStringPoolInit(const std::string& payload, AstSpan errorSpan, std::uint16_t& outBase) {
+        const auto found = stringPoolByPayload_.find(payload);
+        if (found != stringPoolByPayload_.end()) {
+            outBase = found->second;
+            return true;
+        }
+        const std::size_t n = payload.size() + 1;
+        if (n > 0xFFFF) {
+            codegenError(errorSpan, "codegen: string literal is too long", "Shorten the string literal.");
+            return false;
+        }
+        if (n > heapNext_) {
+            codegenError(
+                errorSpan,
+                "codegen: heap overflow while placing string literal payload",
+                "Shorten string literals or reduce the number of distinct strings so heap allocations fit below $FF."
+            );
+            return false;
+        }
+        outBase = static_cast<std::uint16_t>(heapNext_ - n);
+        heapNext_ = outBase;
+        if (outBase < heapFloor_) {
+            heapFloor_ = outBase;
+        }
+        for (std::size_t i = 0; i < payload.size(); ++i) {
+            buffer_.emitU8(kOpLdaImm);
+            buffer_.emitU8(static_cast<std::uint8_t>(static_cast<unsigned char>(payload[i])));
+            buffer_.emitU8(kOpStaAbs);
+            buffer_.emitAddr16LE(static_cast<std::uint16_t>(outBase + static_cast<std::uint16_t>(i)));
+        }
+        buffer_.emitU8(kOpLdaImm);
+        buffer_.emitU8(0x00);
+        buffer_.emitU8(kOpStaAbs);
+        buffer_.emitAddr16LE(static_cast<std::uint16_t>(outBase + static_cast<std::uint16_t>(payload.size())));
+        stringPoolByPayload_.emplace(payload, outBase);
+        return true;
+    }
+
+    std::string lookupDeclType(char name, std::size_t declScopeId) const {
+        for (const SymbolRecord& s : symbols_) {
+            if (s.name == name && s.scopeId == declScopeId) {
+                return s.declType;
+            }
+        }
+        return {};
     }
 
     /// Substep 1: route value to **A** (assignments, arithmetic operands) or **Y** (int print syscall).
@@ -568,6 +696,116 @@ private:
         return false;
     }
 
+    bool isStringLikeExpr(const AstExpr& e) const {
+        if (e.nodeKind() == AstNodeKind::LiteralString) {
+            return true;
+        }
+        if (e.nodeKind() == AstNodeKind::IdentifierExpr) {
+            const auto& id = static_cast<const AstIdentifierExpr&>(e);
+            if (!id.hasResolvedDeclScope()) {
+                return false;
+            }
+            return lookupDeclType(id.name(), id.resolvedDeclScopeId()) == "string";
+        }
+        return false;
+    }
+
+    bool emitStringExprPointerToA(AstExpr& e, AstSpan errSpan) {
+        if (e.nodeKind() == AstNodeKind::LiteralString) {
+            auto& lit = static_cast<AstLiteralString&>(e);
+            const std::string payload = stringPayloadFromLexeme(lit.lexeme());
+            std::uint16_t base = 0;
+            if (!emitStringPoolInit(payload, errSpan, base)) {
+                return false;
+            }
+            buffer_.emitU8(kOpLdaImm);
+            buffer_.emitU8(static_cast<std::uint8_t>(base & 0xFF));
+            return true;
+        }
+        if (e.nodeKind() == AstNodeKind::IdentifierExpr) {
+            auto& id = static_cast<AstIdentifierExpr&>(e);
+            if (!id.hasResolvedDeclScope()) {
+                codegenError(e.span(), "codegen: internal error (identifier missing resolved scope)", "Re-run scope analysis.");
+                return false;
+            }
+            const std::string t = lookupDeclType(id.name(), id.resolvedDeclScopeId());
+            if (t != "string") {
+                codegenError(e.span(), "codegen: string comparison requires string operands", "Use `==` / `!=` with string expressions.");
+                return false;
+            }
+            const codegen::VarKey key{id.name(), id.resolvedDeclScopeId()};
+            const std::uint16_t addr = layout_.addressOf(key);
+            buffer_.emitU8(kOpLdaAbs);
+            emitDataAddr16(addr);
+            return true;
+        }
+        codegenError(e.span(), "codegen: unsupported string expression for comparison", "Use string literals or string identifiers.");
+        return false;
+    }
+
+    bool emitBinaryStringCompare(AstBinaryBoolExpr& b) {
+        if (!isStringLikeExpr(*b.left()) || !isStringLikeExpr(*b.right())) {
+            codegenError(
+                b.span(),
+                "codegen: string `==` / `!=` requires both operands to be string-typed",
+                "Compare two string literals/variables."
+            );
+            return false;
+        }
+        const AstBinaryBoolExpr::Op op = b.op();
+        codegenTrace(
+            verbose_,
+            map_,
+            tokens_,
+            b.span(),
+            std::string("emit BinaryBoolExpr: string compare by pointer (") + (op == AstBinaryBoolExpr::Op::Equal ? "==" : "!=") + ")"
+        );
+        const std::uint16_t leftSlot = layout_.allocateAnonymous(1);
+        const std::uint16_t rightSlot = layout_.allocateAnonymous(1);
+        if (!emitStringExprPointerToA(*b.left(), b.span())) {
+            return false;
+        }
+        buffer_.emitU8(kOpStaAbs);
+        emitDataAddr16(leftSlot);
+        if (!emitStringExprPointerToA(*b.right(), b.span())) {
+            return false;
+        }
+        buffer_.emitU8(kOpStaAbs);
+        emitDataAddr16(rightSlot);
+        buffer_.emitU8(kOpLdxAbs);
+        emitDataAddr16(leftSlot);
+        buffer_.emitU8(kOpCpxAbs);
+        emitDataAddr16(rightSlot); // Z=1 when equal pointer
+
+        if (op == AstBinaryBoolExpr::Op::Equal) {
+            return true;
+        }
+        const std::size_t bneNotEq = buffer_.size();
+        buffer_.emitU8(kOpBne);
+        buffer_.emitU8(0x00);
+        emitForceZClear();
+        const std::size_t bneSkipNotEq = buffer_.size();
+        buffer_.emitU8(kOpBne);
+        buffer_.emitU8(0x00);
+        const std::size_t notEqLabel = buffer_.size();
+        buffer_.emitU8(kOpLdxImm);
+        buffer_.emitU8(0x00);
+        buffer_.emitU8(kOpCpxAbs);
+        emitDataAddr16(zeroAddr_);
+        const std::size_t doneLabel = buffer_.size();
+        const SourceLocation errLoc = locationAtSpan(map_, tokens_, b.span());
+        patchBranchRel8(buffer_, bneNotEq, notEqLabel, diagnostics_, errLoc);
+        patchBranchRel8(buffer_, bneSkipNotEq, doneLabel, diagnostics_, errLoc);
+        return true;
+    }
+
+    bool emitBinaryCompare(AstBinaryBoolExpr& b) {
+        if (isStringLikeExpr(*b.left()) || isStringLikeExpr(*b.right())) {
+            return emitBinaryStringCompare(b);
+        }
+        return emitBinaryIntCompare(b);
+    }
+
     bool emitBooleanExprAsPredicateZ(AstBooleanExpr& b) {
         switch (b.nodeKind()) {
         case AstNodeKind::BooleanLiteralExpr: {
@@ -584,7 +822,7 @@ private:
             return true;
         }
         case AstNodeKind::BinaryBoolExpr:
-            return emitBinaryIntCompare(static_cast<AstBinaryBoolExpr&>(b));
+            return emitBinaryCompare(static_cast<AstBinaryBoolExpr&>(b));
         default:
             codegenError(b.span(), "codegen: unsupported boolean expression", "Only literals and `==` / `!=` on ints are supported.");
             return false;
@@ -660,7 +898,11 @@ private:
     codegen::MemoryLayout& layout_;
     const codegen::CodeGenTarget& target_;
     codegen::CodeBuffer& buffer_;
+    const std::vector<SymbolRecord>& symbols_;
     std::uint16_t zeroAddr_;
+    std::uint16_t heapNext_ = 0x0100;
+    std::uint16_t heapFloor_ = 0x0100;
+    std::map<std::string, std::uint16_t> stringPoolByPayload_;
     std::vector<DataAddrFixup> dataAddrFixups_;
     std::vector<DataImmLowFixup> dataImmLowFixups_;
     std::size_t nextTempPlaceholderId_ = 0;
@@ -671,13 +913,15 @@ private:
 bool bindLayoutFromSymbols(const std::vector<SymbolRecord>& symbols, codegen::MemoryLayout& layout, DiagnosticBag& diagnostics) {
     bool ok = true;
     for (const SymbolRecord& sym : symbols) {
-        if (sym.declType == "int") {
+        if (sym.declType == "int" || sym.declType == "boolean") {
+            layout.varSlot(codegen::VarKey{sym.name, sym.scopeId}, 1);
+        } else if (sym.declType == "string") {
             layout.varSlot(codegen::VarKey{sym.name, sym.scopeId}, 1);
         } else {
             diagnostics.addError(
                 "codegen: variable type `" + sym.declType + "` is not supported for 6502 output yet",
                 sym.declaredAt,
-                "Only `int` storage is implemented; use `int` variables or extend the generator."
+                "Only `int`, `string`, and `boolean` storage are implemented; use those types or extend the generator."
             );
             ok = false;
         }
@@ -706,10 +950,19 @@ bool generate6502Program(
     }
 
     codegen::CodeBuffer buffer;
-    Generator6502 gen(map, tokens, diagnostics, verbose, layout, target, buffer);
+    Generator6502 gen(map, tokens, diagnostics, verbose, layout, target, buffer, symbols);
     gen.visitProgram(program);
     buffer.emitU8(kOpBrk);
     if (!gen.backpatchDataToAfterCode()) {
+        return diagnostics.errorCount() == errorsBefore;
+    }
+
+    if (target.programImageBytes != 0 && buffer.size() > target.programImageBytes) {
+        diagnostics.addError(
+            "codegen: executable image exceeds 256-byte limit",
+            {1, 1},
+            "Reduce generated code size so code+data fit in one 256-byte image."
+        );
         return diagnostics.errorCount() == errorsBefore;
     }
 
