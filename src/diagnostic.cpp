@@ -51,12 +51,12 @@ void appendSuggestedFixText(std::ostringstream& output, const Diagnostic& diagno
         b = len;
     }
     if (a > b) {
-        output << "\n  suggested fix: (internal: invalid byte range; ignored)";
+        output << "\n  SUGGESTED FIX: (internal: invalid byte range; ignored)";
         return;
     }
 
     const std::string_view removed = text.substr(a, b - a);
-    output << "\n  suggested fix: ";
+    output << "\n  SUGGESTED FIX: ";
     if (a == b) {
         output << "insert at byte offset " << a << ": `" << escapeForDiagnostic(fix.newText) << "`";
     } else {
