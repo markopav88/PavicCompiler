@@ -102,7 +102,7 @@ make
 ```bash
 g++ -std=c++17 -Wall -Wextra -pedantic -Isrc -o pavicc \
   src/main.cpp src/diagnostic.cpp src/source.cpp src/token.cpp src/lexer.cpp \
-  src/cst.cpp src/parser.cpp src/ast.cpp src/ast_lower.cpp src/symbol_table.cpp \
+  src/cst.cpp src/parser.cpp src/ast.cpp src/ast_lower.cpp src/optimizer.cpp src/symbol_table.cpp \
   src/semantic_scope.cpp src/semantic_type.cpp src/semantic_usage.cpp \
   src/codegen/memory_layout.cpp src/codegen/code_buffer.cpp src/codegen/codegen.cpp
 ```
@@ -128,7 +128,7 @@ Or, if built with CMake:
 ./build/pavicc -q <source-file>
 ```
 
-Verbose lexer trace is enabled by default.
+Verbose compiler traces (lexer, parser, semantic, and codegen) are enabled by default.
 
 ## Showcase CLI Tests
 
