@@ -1,6 +1,6 @@
 # Testing Results 
 
-This is a quick write-up of what I tested during development and what I observed. Lots of tests are important! You can never have too many!(Maybe). I had also tested against some test cases from Hamid, Sam, and Aidan Carrs HOF project!
+This is a quick write-up of what I tested during development and what I observed. Lots of tests are important! You can never have too many! I had also tested against some test cases from Hamid, Sam, and Aidan Carrs HOF project!
 
 ## Test Coverage Used
 
