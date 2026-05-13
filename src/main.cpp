@@ -492,7 +492,9 @@ int main(int argc, char** argv) {
     std::string textBackendOutput;
 
     if (canRunCodegen) {
-        if (backendTarget == pavic::BackendTarget::Target6502) {
+        const bool shouldRun6502Codegen =
+            (backendTarget == pavic::BackendTarget::Target6502 || backendTarget == pavic::BackendTarget::TargetLlvmIr);
+        if (shouldRun6502Codegen) {
             if (!quiet) {
                 std::cout << "Begin CODE GENERATION\n\n";
             }
@@ -514,7 +516,8 @@ int main(int argc, char** argv) {
                 const std::size_t codegenErrors = diagnostics.errorCount() - errorsAfterUsage;
                 std::cout << "\nCODE GEN complete with " << codegenErrors << " errors\n\n";
             }
-        } else {
+        }
+        if (backendTarget != pavic::BackendTarget::Target6502) {
             bool ok = false;
             if (backendTarget == pavic::BackendTarget::TargetLlvmIr) {
                 ok = pavic::emitLlvmIrModule(astProgramPtrs, sourceMap, tokens, diagnostics, textBackendOutput);
@@ -608,7 +611,9 @@ int main(int argc, char** argv) {
         }
         std::cout << "========== end symbol table ==========\n";
 
-        if (backendTarget == pavic::BackendTarget::Target6502) {
+        const bool shouldPrint6502Dump =
+            (backendTarget == pavic::BackendTarget::Target6502 || backendTarget == pavic::BackendTarget::TargetLlvmIr);
+        if (shouldPrint6502Dump) {
             std::cout << "6502 Code\n\n";
             for (std::size_t i = 0; i < objectCodePerProgram.size(); ++i) {
                 if (i > 0) {
@@ -630,7 +635,8 @@ int main(int argc, char** argv) {
                 std::cout << "\n";
             }
             std::cout << "\nEND\n";
-        } else {
+        }
+        if (backendTarget != pavic::BackendTarget::Target6502) {
             std::cout << "Generated " << pavic::backendTargetName(backendTarget) << " output\n\n";
             std::cout << textBackendOutput;
             if (!textBackendOutput.empty() && textBackendOutput.back() != '\n') {
