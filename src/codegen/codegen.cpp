@@ -1048,20 +1048,27 @@ private:
         }
 
         // Invert Z for `!=`: after this, Z=1 means not equal.
-        // Compact inversion with only allowed opcodes:
-        // if Z==0 (not equal) -> LDA #0 (Z=1)
-        // if Z==1 (equal)     -> LDA #1 (Z=0)
+        // Use only CPX-based flag setting so predicate truth does not depend on
+        // whether a given emulator updates Z on LDA/LDX side effects.
+        // original Z==0 (not equal) -> set Z=1
+        // original Z==1 (equal)     -> set Z=0
         const std::size_t bneNotEq = buffer_.size();
         buffer_.emitU8(kOpBne);
-        buffer_.emitU8(0x00); // branch when original Z=0 (not equal)
-        buffer_.emitU8(kOpLdaImm);
+        buffer_.emitU8(0x00); // branch when original Z=0 (not equal): true path
+        // equal path => false => force Z=0 with CPX(1, zeroAddr)
+        buffer_.emitU8(kOpLdxImm);
         buffer_.emitU8(0x01); // equal path => false => Z=0
+        buffer_.emitU8(kOpCpxAbs);
+        emitDataAddr16(zeroAddr_);
         const std::size_t bneSkipNotEq = buffer_.size();
         buffer_.emitU8(kOpBne);
-        buffer_.emitU8(0x00);
+        buffer_.emitU8(0x00); // unconditional in equal path (Z=0)
         const std::size_t notEqLabel = buffer_.size();
-        buffer_.emitU8(kOpLdaImm);
-        buffer_.emitU8(0x00); // not-equal path => true => Z=1
+        // not-equal path => true => force Z=1 with CPX(0, zeroAddr)
+        buffer_.emitU8(kOpLdxImm);
+        buffer_.emitU8(0x00);
+        buffer_.emitU8(kOpCpxAbs);
+        emitDataAddr16(zeroAddr_);
         const std::size_t doneLabel = buffer_.size();
         const SourceLocation errLoc = locationAtSpan(map_, tokens_, b.span());
         patchBranchRel8(buffer_, bneNotEq, notEqLabel, diagnostics_, errLoc);
