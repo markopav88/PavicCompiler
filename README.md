@@ -341,7 +341,7 @@ The biggest value areas were:
 - **Code formatting and cleanup**: keeping code readable and consistent while iterating quickly.
 - **Code explanation and learning support**: helping break down unfamiliar C++ and compiler concepts into understandable steps.
 - **System design guidance**: helping reason about architecture decisions across lexer, parser, semantic analysis, optimization, and 6502 codegen.
-- **Code Generation**: Cursor was also extremely helpful for building out stages such as Lex, Parse(majority done by myself), Semantic Analysis, and Code Gen. Cursor was also extremely helpful in explaining concepts and learning about how to work with LLVM and IR's. Lastly, it was good for building out the portability features for multiple backends such as Typescript and Java.
+- **Code Generation**: LLM's were helpful for building out stages such as Lex, Parse, Semantic Analysis, and Code Gen. LLM'a were also helpful in explaining concepts and learning about how to work with LLVM and IR's. Lastly, it was good for building out the portability features for multiple backends such as Typescript and Java.
 
-AI support also improved productivity during difficult debugging sessions (for example around codegen behavior and edge-case failures). Overall, the experience was strongly positive, and LLM-based tooling was genuinely helpful in delivering this project.
+LLM support also improved productivity during difficult debugging sessions (for example around codegen behavior and edge-case failures). Overall, the experience was strongly positive, and LLM-based tooling was genuinely helpful in delivering this project.
 
